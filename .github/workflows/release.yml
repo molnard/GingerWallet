@@ -232,6 +232,16 @@ jobs:
         shell: bash
         run: bash ./Contrib/release.sh releasenote > ReleaseNote.md
 
+      - name: Upload collected release packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: |
+            ./packages/*
+            ReleaseNote.md
+          compression-level: 0
+          if-no-files-found: error
+
       - name: Create draft GitHub release
         if: env.CREATE_RELEASE == 'true'
         uses: softprops/action-gh-release@v3
