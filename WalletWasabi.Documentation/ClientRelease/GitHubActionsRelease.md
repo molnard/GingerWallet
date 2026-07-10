@@ -48,7 +48,7 @@ When a non-prerelease GitHub release is published, `.github/workflows/onReleaseP
 
 Required secret:
 
-- `WEBSITE_UPDATE_TOKEN`: GitHub token that can call `repository_dispatch` on the website repository.
+- `WEBSITE_UPDATE_TOKEN`: GitHub token that can call `repository_dispatch` on the website repository. A fine-grained token should be scoped to the website repository with `Contents: write`; a classic token can use `repo` for private repositories or `public_repo` for public repositories.
 
 Optional repository variable:
 
