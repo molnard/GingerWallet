@@ -58,4 +58,4 @@ The workflow also has a manual `workflow_dispatch` path for testing with a custo
 
 ## Notes
 
-Wasabi also has a separate release-published workflow that updates its documentation and website repositories by using repository-dispatch tokens. Ginger should only add that after the target documentation or website repositories and token owners are decided.
+Wasabi also triggers a documentation repository update after publishing a release. Ginger currently only wires the website update; a docs update can be added separately after the target repository and update rules are decided.
