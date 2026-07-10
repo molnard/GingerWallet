@@ -42,6 +42,20 @@ The GitHub release itself uses the built-in `GITHUB_TOKEN`; no separate GitHub t
 
 Unsigned test runs do not need any of these secrets. They leave Windows/macOS packages unsigned and create only a plain `SHA256SUMS` file.
 
+## Website update
+
+When a non-prerelease GitHub release is published, `.github/workflows/onReleasePublished.yml` sends an `update-version` `repository_dispatch` event to the website repository. The target website workflow updates the download links and opens a pull request for review.
+
+Required secret:
+
+- `WEBSITE_UPDATE_TOKEN`: GitHub token that can call `repository_dispatch` on the website repository.
+
+Optional repository variable:
+
+- `WEBSITE_REPOSITORY`: website repository to update. Defaults to `GingerPrivacy/GingerWalletWebSite`.
+
+The workflow also has a manual `workflow_dispatch` path for testing with a custom `version`, `website_repository`, and `release_repository`.
+
 ## Notes
 
 Wasabi also has a separate release-published workflow that updates its documentation and website repositories by using repository-dispatch tokens. Ginger should only add that after the target documentation or website repositories and token owners are decided.

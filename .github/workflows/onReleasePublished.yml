@@ -1,0 +1,84 @@
+name: Update website after release is published
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, with or without the leading v.
+        required: true
+      website_repository:
+        description: Website repository that receives the update-version dispatch.
+        required: true
+        default: GingerPrivacy/GingerWalletWebSite
+      release_repository:
+        description: Repository that hosts the GitHub release assets.
+        required: true
+        default: GingerPrivacy/GingerWallet
+
+permissions:
+  contents: read
+
+jobs:
+  trigger-website-workflow:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve release data
+        id: release
+        env:
+          RELEASE_EVENT_VERSION: ${{ github.event.release.tag_name }}
+          RELEASE_EVENT_PRERELEASE: ${{ github.event.release.prerelease }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_WEBSITE_REPOSITORY: ${{ inputs.website_repository }}
+          INPUT_RELEASE_REPOSITORY: ${{ inputs.release_repository }}
+          DEFAULT_RELEASE_REPOSITORY: ${{ github.repository }}
+          DEFAULT_WEBSITE_REPOSITORY: ${{ vars.WEBSITE_REPOSITORY }}
+        run: |
+          set -euo pipefail
+
+          if [ "${RELEASE_EVENT_PRERELEASE:-false}" = "true" ]; then
+            echo "Pre-release detected, skipping website update."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          version="${RELEASE_EVENT_VERSION:-$INPUT_VERSION}"
+          website_repository="${INPUT_WEBSITE_REPOSITORY:-$DEFAULT_WEBSITE_REPOSITORY}"
+          release_repository="${INPUT_RELEASE_REPOSITORY:-$DEFAULT_RELEASE_REPOSITORY}"
+          website_repository="${website_repository:-GingerPrivacy/GingerWalletWebSite}"
+          release_repository="${release_repository:-GingerPrivacy/GingerWallet}"
+
+          if [ -z "$version" ]; then
+            echo "Missing release version." >&2
+            exit 1
+          fi
+
+          version="${version#v}"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "website_repository=$website_repository" >> "$GITHUB_OUTPUT"
+          echo "release_repository=$release_repository" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger website update workflow
+        if: steps.release.outputs.skip != 'true'
+        env:
+          WEBSITE_UPDATE_TOKEN: ${{ secrets.WEBSITE_UPDATE_TOKEN }}
+          VERSION: ${{ steps.release.outputs.version }}
+          WEBSITE_REPOSITORY: ${{ steps.release.outputs.website_repository }}
+          RELEASE_REPOSITORY: ${{ steps.release.outputs.release_repository }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$WEBSITE_UPDATE_TOKEN" ]; then
+            echo "Missing WEBSITE_UPDATE_TOKEN secret." >&2
+            exit 1
+          fi
+
+          curl -fsS -X POST \
+            -H "Authorization: token $WEBSITE_UPDATE_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$WEBSITE_REPOSITORY/dispatches" \
+            -d "{\"event_type\":\"update-version\",\"client_payload\":{\"new_version\":\"$VERSION\",\"release_repository\":\"$RELEASE_REPOSITORY\"}}"
