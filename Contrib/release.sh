@@ -591,7 +591,7 @@ build_macos_dmg() {
     find "$app_path" -name ".DS_Store" -type f -delete
     while IFS= read -r mach_file; do
       chmod u+x "$mach_file"
-    done < <(find "$app_path" -type f -print0 | xargs -0 file | awk -F: '/Mach-O/ { print $1 }')
+    done < <(find "$app_path" -type f -print0 | xargs -0 file | awk -F: '/Mach-O/ { print $1 }' | sed -E 's/ \(for architecture [^)]+\)$//' | sort -u)
 
     if is_true "${CODE_SIGN:-false}"; then
       local sign_arguments=(--sign "$MAC_TEAMID" --verbose --force --options runtime --timestamp --entitlements "$entitlements_path")
