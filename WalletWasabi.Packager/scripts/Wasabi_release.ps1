@@ -1,6 +1,20 @@
 # If you are not allowed to run this script, run the following command in your PowerShell console: 
 # Set-ExecutionPolicy RemoteSigned
 
+$ErrorActionPreference = "Stop"
+
+function Invoke-Packager {
+	param(
+		[Parameter(Mandatory)]
+		[string] $Command
+	)
+
+	dotnet run -- $Command
+	if ($LASTEXITCODE -ne 0) {
+		throw "Packager command '$Command' failed with exit code $LASTEXITCODE."
+	}
+}
+
 $host.UI.RawUI.ForegroundColor = "Green"
 $host.UI.RawUI.BackgroundColor = "Black"
 Read-Host -Prompt 'Releasing Wasabi Wallet - Insert a pendrive to store macOS notarization candidate files [Press ENTER]'
@@ -14,8 +28,8 @@ $visualStudioPath = "C:\Program Files\Microsoft Visual Studio\2022\Community\Com
 
 # Change directory to the wallet wasabi packager folder
 cd $walletWasabiPath
-dotnet run -- publish
-dotnet run -- sign-windows-binaries
+Invoke-Packager "publish"
+Invoke-Packager "sign-windows-binaries"
 
 $host.UI.RawUI.ForegroundColor = "Green"
 $host.UI.RawUI.BackgroundColor = "Black"
@@ -31,6 +45,6 @@ $host.UI.RawUI.ForegroundColor = "Green"
 $host.UI.RawUI.BackgroundColor = "Black"
 Read-Host -Prompt 'Wait until WiX building the MSI installer, then [Press ENTER]'
 Read-Host -Prompt 'Wait until macOS notarization is done and insert the pendrive to this PC [Press ENTER]'
-dotnet run -- sign
+Invoke-Packager "sign"
 
 Read-Host -Prompt 'Release finished [Press ENTER]'
