@@ -24,8 +24,6 @@ namespace WalletWasabi.Packager;
 /// </summary>
 public static class Program
 {
-	public const string PfxPath = "C:\\digicert.pfx";
-	private const string DefaultWindowsSigningCertificateThumbprint = "11b23b66b96261629cff1b08a28518309352ff7d";
 	private const string WindowsSigningCertificateThumbprintEnvironmentVariable = "GINGER_WINDOWS_SIGN_CERT_SHA1";
 	private const string WindowsSignToolDirectory = @"C:\Program Files (x86)\Microsoft SDKs\ClickOnce\SignTool";
 
@@ -244,9 +242,7 @@ public static class Program
 
 	private static void SignWindowsFile(string filePath)
 	{
-		string certificateThumbprint =
-			Environment.GetEnvironmentVariable(WindowsSigningCertificateThumbprintEnvironmentVariable)
-			?? DefaultWindowsSigningCertificateThumbprint;
+		string certificateThumbprint = GetWindowsSigningCertificateThumbprint();
 
 		string arguments = string.Join(
 			" ",
@@ -259,6 +255,30 @@ public static class Program
 			$"\"{filePath}\"");
 
 		StartProcessAndWaitForExit(Path.Combine(WindowsSignToolDirectory, "signtool.exe"), WindowsSignToolDirectory, arguments: arguments);
+	}
+
+	private static string GetWindowsSigningCertificateThumbprint()
+	{
+		string? configuredThumbprint = Environment.GetEnvironmentVariable(WindowsSigningCertificateThumbprintEnvironmentVariable);
+
+		if (string.IsNullOrWhiteSpace(configuredThumbprint))
+		{
+			throw new InvalidOperationException(
+				$"Set {WindowsSigningCertificateThumbprintEnvironmentVariable} to the 40-character SHA-1 thumbprint of the Windows code-signing certificate.");
+		}
+
+		string certificateThumbprint = new(
+			configuredThumbprint
+				.Where(character => !char.IsWhiteSpace(character) && character is not '\u200e' and not '\u200f')
+				.ToArray());
+
+		if (certificateThumbprint.Length != 40 || !certificateThumbprint.All(Uri.IsHexDigit))
+		{
+			throw new InvalidOperationException(
+				$"{WindowsSigningCertificateThumbprintEnvironmentVariable} must contain exactly 40 hexadecimal characters.");
+		}
+
+		return certificateThumbprint.ToUpperInvariant();
 	}
 
 	private static async Task PublishAsync()

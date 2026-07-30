@@ -78,32 +78,33 @@ Backport is a branch. It is used for creating silent releases (hotfixes, small i
 
 ## Code signing certificate
 
-Digicert holds our Code Signing Certificate under the name "zkSNACKs Limited".
-- Issuing CA: DigiCert SHA2 Assured ID Code Signing CA
+Certum issues the Windows code-signing certificate for the "Open Source Developer Martin Rimóczi" publisher through SimplySign.
+
+- Issuing CA: Certum Code Signing 2021 CA
 - Platform: Microsoft Authenticode
 - Type: Code Signing
-- CSR Key Size: 3072
 
-The release script signs the Windows application executables before the MSI is built, then signs the final MSI after WiX finishes. By default it uses the thumbprint compiled into the packager, but the release machine can override it without code changes:
+The release script signs the Windows application executables before the MSI is built, then signs the final MSI after WiX finishes. The packager requires the certificate's SHA-1 thumbprint in the `GINGER_WINDOWS_SIGN_CERT_SHA1` environment variable. This SHA-1 value only selects the certificate; file signatures and RFC 3161 timestamps use SHA-256.
 
+Before packaging:
+
+1. Sign in to SimplySign Desktop and make sure the current, valid code-signing certificate is available.
+2. Open the certificate, select the **Details** tab, and copy the **Thumbprint** value as described in [Certum's SignTool instructions](https://www.files.certum.eu/documents/manual_en/Signing_with_the_use_of_jarsigner_tool_and_signtool.pdf). Do not use the certificate serial number.
+3. Set the thumbprint for the current PowerShell session:
+
+```powershell
+$env:GINGER_WINDOWS_SIGN_CERT_SHA1 = "<certificate-thumbprint>"
 ```
-setx GINGER_WINDOWS_SIGN_CERT_SHA1 <certificate-thumbprint>
+
+The packager ignores whitespace and common invisible direction marks copied by the Windows certificate viewer, but otherwise requires exactly 40 hexadecimal characters. To persist the value for future shells, run:
+
+```powershell
+setx GINGER_WINDOWS_SIGN_CERT_SHA1 "<certificate-thumbprint>"
 ```
 
-SmartScreen reputation is controlled by Microsoft and can still show warnings for newly signed or low-reputation releases even when Authenticode verification succeeds. Keep signing every Windows release with the same publisher certificate where possible so reputation can build over time.
+`setx` only affects newly started processes, so open a new PowerShell window before running the release script.
 
-**Renewal**
-
-- Create a new Certificate Signing Request (CSR) file with DigiCert® Certificate Utility application. 
-   DigiCert® Certificate Utility is using the logged in user's public key to encrypt the file and only the same user can decrypt it after we receive the certificate.
-   Make sure to create the CSR file in David's profile (or wherever the release script is located)!
-- Upload the CSR file to DigiCert.
-- Wait for DigiCert to issue a new `zksnacks_limited.p7b` file.
-- Import the `zksnacks_limited.p7b` file to DigiCert® Certificate Utility.
-- Choose a friendly name for the certificate and apply the default password to it.
-- Export the `zksnacks_limited.pfx` to `C:\zksnacks_limited.pfx`.
-- Rename `C:\zksnacks_limited.pfx` to `C:\digicert.pfx`, so the Packager can find it!!
-
+SmartScreen reputation is controlled by Microsoft and can still show warnings for newly signed or low-reputation releases even when Authenticode verification succeeds. Keep the publisher identity consistent across certificate renewals and sign every Windows release so reputation can build over time.
 
 ## Packager environment setup
 
@@ -116,4 +117,3 @@ echo "`whoami` ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/`whoami` && sud
 ```
 
 Use WSL 1 otherwise you cannot enter anything to the console (sudo password, appleid). https://github.com/microsoft/WSL/issues/4424
-
