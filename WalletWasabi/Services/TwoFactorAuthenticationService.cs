@@ -49,10 +49,17 @@ public class TwoFactorAuthenticationService
 		foreach (var walletFileInfo in WalletDirectories.EnumerateWalletFiles())
 		{
 			KeyManager? keyManager;
+			bool isLegacyEncryption = false;
 			try
 			{
 				keyManager = KeyManager.FromFile(walletFileInfo.FullName, secret);
-				continue;
+				string walletFileContent = File.ReadAllText(walletFileInfo.FullName);
+				if (TwoFactorAuthenticationHelpers.IsUsingAuthenticatedEncryption(walletFileContent))
+				{
+					continue;
+				}
+
+				isLegacyEncryption = true;
 			}
 			catch (IOException)
 			{
@@ -69,7 +76,9 @@ public class TwoFactorAuthenticationService
 			var (walletFilePath, walletBackupFilePath, _) = WalletDirectories.GetWalletFilePaths(keyManager.WalletName);
 			keyManager.EncryptionKey = secret;
 
-			Logger.LogInfo($"Wallet file was not encrypted '{walletFileInfo.Name}', encrypting... ");
+			Logger.LogInfo(isLegacyEncryption
+				? $"Wallet file used legacy encryption '{walletFileInfo.Name}', migrating... "
+				: $"Wallet file was not encrypted '{walletFileInfo.Name}', encrypting... ");
 			keyManager.ToFile(walletFilePath);
 			keyManager.ToFile(walletBackupFilePath);
 		}

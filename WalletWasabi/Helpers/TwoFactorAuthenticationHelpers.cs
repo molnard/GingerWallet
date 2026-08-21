@@ -1,6 +1,7 @@
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using WalletWasabi.Crypto;
 
 namespace WalletWasabi.Helpers;
 
@@ -11,25 +12,24 @@ public class WalletEncryption
 
 public static class TwoFactorAuthenticationHelpers
 {
+	private const string AuthenticatedEncryptionPrefix = "2fa-v2:";
+
 	public static string EncryptString(string plainText, string secret)
 	{
-		using Aes aes = Aes.Create();
-		aes.Key = GetEncryptionKey(secret);
-
-		using MemoryStream memoryStream = new();
-		memoryStream.Write(aes.IV, 0, 16);
-		using (ICryptoTransform encryptor = aes.CreateEncryptor())
-		using (CryptoStream cryptoStream = new(memoryStream, encryptor, CryptoStreamMode.Write))
-		{
-			byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
-			cryptoStream.Write(plainBytes, 0, plainBytes.Length);
-			cryptoStream.FlushFinalBlock();
-		}
-
-		return Convert.ToBase64String(memoryStream.ToArray());
+		return AuthenticatedEncryptionPrefix + StringCipher.Encrypt(plainText, secret);
 	}
 
 	public static string DecryptString(string cipherText, string secret)
+	{
+		return IsUsingAuthenticatedEncryption(cipherText)
+			? StringCipher.Decrypt(cipherText[AuthenticatedEncryptionPrefix.Length..], secret)
+			: DecryptLegacyString(cipherText, secret);
+	}
+
+	public static bool IsUsingAuthenticatedEncryption(string cipherText) =>
+		cipherText.StartsWith(AuthenticatedEncryptionPrefix, StringComparison.Ordinal);
+
+	private static string DecryptLegacyString(string cipherText, string secret)
 	{
 		using Aes aes = Aes.Create();
 		aes.Key = GetEncryptionKey(secret);
