@@ -141,7 +141,7 @@ public class JsonRpcServer : BackgroundService
 	{
 		if (!Config.RequiresCredentials)
 		{
-			return true;
+			return false;
 		}
 
 		var user = context.User;
