@@ -24,7 +24,7 @@ public class JsonRpcServerConfigurationTests
 	{
 		var configuration = new JsonRpcServerConfiguration(false, "", "", Prefixes);
 
-		Assert.False(configuration.RequiresCredentials);
+		Assert.False(configuration.HasCredentials);
 	}
 
 	[Fact]
@@ -32,6 +32,6 @@ public class JsonRpcServerConfigurationTests
 	{
 		var configuration = new JsonRpcServerConfiguration(true, "user", "password", Prefixes);
 
-		Assert.True(configuration.RequiresCredentials);
+		Assert.True(configuration.HasCredentials);
 	}
 }

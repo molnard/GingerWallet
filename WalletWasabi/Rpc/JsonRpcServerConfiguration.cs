@@ -9,7 +9,7 @@ public class JsonRpcServerConfiguration
 		JsonRpcPassword = jsonRpcPassword;
 		Prefixes = prefixes;
 
-		if (IsEnabled && !RequiresCredentials)
+		if (IsEnabled && !HasCredentials)
 		{
 			throw new ArgumentException("The JSON-RPC server requires both a non-empty user name and password.");
 		}
@@ -20,5 +20,5 @@ public class JsonRpcServerConfiguration
 	public string JsonRpcPassword { get; }
 	public string[] Prefixes { get; }
 
-	public bool RequiresCredentials => !string.IsNullOrWhiteSpace(JsonRpcUser) && !string.IsNullOrWhiteSpace(JsonRpcPassword);
+	public bool HasCredentials => !string.IsNullOrWhiteSpace(JsonRpcUser) && !string.IsNullOrWhiteSpace(JsonRpcPassword);
 }

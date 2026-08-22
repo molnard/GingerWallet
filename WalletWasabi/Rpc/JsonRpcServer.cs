@@ -139,7 +139,7 @@ public class JsonRpcServer : BackgroundService
 
 	private bool IsAuthorized(HttpListenerContext context)
 	{
-		if (!Config.RequiresCredentials)
+		if (!Config.HasCredentials)
 		{
 			return false;
 		}
