@@ -6,18 +6,16 @@ namespace WalletWasabi.Tests.Helpers;
 
 public class WindowsStartupTestHelper
 {
-	private const string PathToRegistyKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
+	private const string PathToRegistryKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
 
 	public bool RegistryKeyExists()
 	{
-		bool result = false;
-
-		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
 		{
-			RegistryKey? registryKey = Registry.CurrentUser.OpenSubKey(PathToRegistyKey, false) ?? throw new InvalidOperationException("Registry operation failed.");
-			result = registryKey.GetValueNames().Contains(nameof(WalletWasabi));
+			return false;
 		}
 
-		return result;
+		using RegistryKey? registryKey = Registry.CurrentUser.OpenSubKey(PathToRegistryKey, false);
+		return registryKey?.GetValueNames().Contains(nameof(WalletWasabi)) is true;
 	}
 }
