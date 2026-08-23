@@ -35,13 +35,13 @@ Record the operating system, Ginger commit, Trezor Suite version, device model, 
 Check out the pull request using either GitHub CLI:
 
 ```shell
-gh pr checkout <PR_NUMBER>
+gh pr checkout 196
 ```
 
 Or fetch it with Git:
 
 ```shell
-git fetch https://github.com/GingerPrivacy/GingerWallet.git pull/<PR_NUMBER>/head:trezor-suite-ginger-poc
+git fetch https://github.com/GingerPrivacy/GingerWallet.git pull/196/head:trezor-suite-ginger-poc
 git switch trezor-suite-ginger-poc
 ```
 
