@@ -42,6 +42,7 @@ public static class Program
 	{
 		"win-x64",
 		"linux-x64",
+		"linux-arm64",
 		"osx-x64",
 		"osx-arm64"
 	};
@@ -442,7 +443,8 @@ public static class Program
 					throw new Exception($"{publishedFolder} does not exist.");
 				}
 
-				var newFolderName = $"Ginger-{VersionPrefix}";
+				string linuxPackagePostfix = target == "linux-arm64" ? "-linux-arm64" : "";
+				var newFolderName = $"Ginger-{VersionPrefix}{linuxPackagePostfix}";
 				var newFolderPath = Path.Combine(BinDistDirectory, newFolderName);
 
 				Console.WriteLine($"# Move '{publishedFolder}' to '{newFolderPath}'.");
@@ -496,6 +498,7 @@ public static class Program
 				}
 
 				var controlFilePath = Path.Combine(debianFolderPath, "control");
+				string debArchitecture = target == "linux-arm64" ? "arm64" : "amd64";
 
 				// License format does not yet work, but should work in the future, it's work in progress: https://bugs.launchpad.net/ubuntu/+source/software-center/+bug/435183
 				var controlFileContent = $"Package: {ExecutableName}\n" +
@@ -506,7 +509,7 @@ public static class Program
 					$"Homepage: https://gingerwallet.io\n" +
 					$"Vcs-Git: git://github.com/GingerPrivacy/GingerWallet.git\n" +
 					$"Vcs-Browser: https://github.com/GingerPrivacy/GingerWallet\n" +
-					$"Architecture: amd64\n" +
+					$"Architecture: {debArchitecture}\n" +
 					$"License: Open Source (MIT)\n" +
 					$"Installed-Size: {installedSizeKb}\n" +
 					$"Recommends: policykit-1\n" +
@@ -515,11 +518,11 @@ public static class Program
 
 				File.WriteAllText(controlFilePath, controlFileContent, Encoding.ASCII);
 
-				string postInstScriptContent = """
-											   #!/bin/sh
-											   /usr/local/bin/gingerwallet/Microservices/Binaries/linux-x64/hwi installudevrules
-											   exit 0
-											   """.ReplaceLineEndings("\n");
+				string postInstScriptContent = $$"""
+												#!/bin/sh
+												/usr/local/bin/gingerwallet/Microservices/Binaries/{{target}}/hwi installudevrules
+												exit 0
+												""".ReplaceLineEndings("\n");
 
 				string postInstScriptPath = Path.Combine(debianFolderPath, "postinst");
 				File.WriteAllText(postInstScriptPath, postInstScriptContent, Encoding.ASCII);
@@ -565,8 +568,8 @@ public static class Program
 
 				await IoHelpers.TryDeleteDirectoryAsync(debFolderPath).ConfigureAwait(false);
 
-				string oldDeb = Path.Combine(BinDistDirectory, $"{ExecutableName}_{VersionPrefix}_amd64.deb");
-				string newDeb = Path.Combine(BinDistDirectory, $"Ginger-{VersionPrefix}.deb");
+				string oldDeb = Path.Combine(BinDistDirectory, $"{ExecutableName}_{VersionPrefix}_{debArchitecture}.deb");
+				string newDeb = Path.Combine(BinDistDirectory, $"Ginger-{VersionPrefix}{(target == "linux-arm64" ? "-arm64" : "")}.deb");
 				File.Move(oldDeb, newDeb);
 
 				await IoHelpers.TryDeleteDirectoryAsync(publishedFolder).ConfigureAwait(false);
@@ -717,6 +720,7 @@ public static class Program
 		{
 			"win-x64" => new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "win-x64" },
 			"linux-x64" => new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "linux-x64" },
+			"linux-arm64" => new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "linux-arm64" },
 			"osx-x64" => new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "osx-x64" },
 			"osx-arm64" => new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "osx-arm64" },
 			_ => throw new NotSupportedException($"Unsupported package target '{target}'.")
