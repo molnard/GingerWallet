@@ -7,7 +7,7 @@ namespace WalletWasabi.SecretHunt;
 
 public class SecretHuntResults
 {
-	public bool Enabled { get; set; } = true;
+	public bool Enabled { get; set; } = false;
 	public List<SecretHuntEventResult> Results { get; set; } = [];
 }
 

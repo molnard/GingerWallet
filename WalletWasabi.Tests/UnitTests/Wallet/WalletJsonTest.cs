@@ -333,7 +333,7 @@ public class WalletJsonTest
 		    }
 		  ],
 		  "SecretHuntResults": {
-		    "Enabled": true,
+		    "Enabled": false,
 		    "Results": []
 		  }
 		}
