@@ -17,10 +17,12 @@ public class BaseInhibitorTaskTests
 	[Fact]
 	public async Task CancelBehaviorAsync()
 	{
+		bool? killedEntireProcessTree = null;
+
 		using MockProcessAsync mockProcess = new(new ProcessStartInfo());
 		mockProcess.OnWaitForExitAsync = (cancellationToken) => Task.Delay(Timeout.Infinite, cancellationToken);
 		mockProcess.OnHasExited = () => false;
-		mockProcess.OnKill = b => { };
+		mockProcess.OnKill = entireProcessTree => killedEntireProcessTree = entireProcessTree;
 
 		TestInhibitorClass psTask = new(TimeSpan.FromSeconds(10), DefaultReason, mockProcess);
 
@@ -35,6 +37,9 @@ public class BaseInhibitorTaskTests
 
 		// Prolong after exit must fail.
 		Assert.False(psTask.Prolong(TimeSpan.FromSeconds(5)));
+
+		// Killing a process tree can signal the wallet process group on macOS.
+		Assert.False(killedEntireProcessTree);
 	}
 
 	public class TestInhibitorClass : BaseInhibitorTask
