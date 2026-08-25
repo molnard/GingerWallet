@@ -28,7 +28,7 @@ For a detailed installation guide, including **signature verification**, see [th
 ## Advanced Guide
 If you want to build or update Wasabi from source code, check out [these easy instructions](https://docs.wasabiwallet.io/using-wasabi/BuildSource.html).
 
-Wasabi uses [reproducible builds](https://reproducible-builds.org/), which you can verify with [this guide](https://github.com/zkSNACKs/WalletWasabi/blob/master/WalletWasabi.Documentation/Guides/DeterministicBuildGuide.md).
+Ginger uses [reproducible builds](https://reproducible-builds.org/), which you can verify with [this guide](https://github.com/GingerPrivacy/GingerWallet/blob/master/WalletWasabi.Documentation/Guides/DeterministicBuildGuide.md).
 
 ## Requirements
 - Windows 10 1607+
