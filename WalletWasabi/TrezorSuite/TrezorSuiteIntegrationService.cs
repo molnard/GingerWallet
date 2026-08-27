@@ -26,11 +26,15 @@ public sealed class TrezorSuiteIntegrationService : IDisposable
 
 	public TrezorSuiteIntegrationService(string gingerDataDir, HttpClient? httpClient = null, TrezorSuiteLocator? locator = null)
 	{
-		_stateFilePath = Path.Combine(gingerDataDir, "TrezorSuiteIntegration", "state.json");
+		var integrationDataDir = Path.Combine(gingerDataDir, "TrezorSuiteIntegration");
+		_stateFilePath = Path.Combine(integrationDataDir, "state.json");
+		LogDirectoryPath = Path.Combine(integrationDataDir, "SuiteLogs");
 		_httpClient = httpClient ?? WasabiHttpClientFactory.CreateLongLivedHttpClient();
 		_ownsHttpClient = httpClient is null;
 		_locator = locator ?? new TrezorSuiteLocator();
 	}
+
+	public string LogDirectoryPath { get; }
 
 	public async Task<TrezorSuiteIntegrationStatus> GetStatusAsync(string? preferredPath = null, CancellationToken cancellationToken = default)
 	{
@@ -116,7 +120,7 @@ public sealed class TrezorSuiteIntegrationService : IDisposable
 			}
 
 			await StopBootstrapProcessAsync(bootstrapProcess).ConfigureAwait(false);
-			StartSuite(executablePath, Array.Empty<string>()).Dispose();
+			StartSuite(executablePath, GetLaunchArguments()).Dispose();
 			return await GetStatusAsync(executablePath, cancellationToken).ConfigureAwait(false);
 		}
 		finally
@@ -154,7 +158,7 @@ public sealed class TrezorSuiteIntegrationService : IDisposable
 			}
 
 			File.Delete(_stateFilePath);
-			StartSuite(executablePath, Array.Empty<string>()).Dispose();
+			StartSuite(executablePath, GetLaunchArguments()).Dispose();
 			return await GetStatusAsync(executablePath, cancellationToken).ConfigureAwait(false);
 		}
 		finally
@@ -167,7 +171,7 @@ public sealed class TrezorSuiteIntegrationService : IDisposable
 	{
 		var state = LoadStateAsync(CancellationToken.None).GetAwaiter().GetResult();
 		var executablePath = RequireExecutablePath(preferredPath, state?.SuiteExecutablePath);
-		StartSuite(executablePath, Array.Empty<string>()).Dispose();
+		StartSuite(executablePath, GetLaunchArguments()).Dispose();
 	}
 
 	public void Dispose()
@@ -179,8 +183,17 @@ public sealed class TrezorSuiteIntegrationService : IDisposable
 		_operationLock.Dispose();
 	}
 
-	private static string[] GetBootstrapArguments(int port) =>
+	internal string[] GetLaunchArguments() =>
 	[
+		"--log-write",
+		"--log-level=debug",
+		$"--log-path={LogDirectoryPath}",
+		"--log-file=trezor-suite-log-%ts.txt"
+	];
+
+	internal string[] GetBootstrapArguments(int port) =>
+	[
+		.. GetLaunchArguments(),
 		"--open-devtools",
 		"--remote-debugging-address=127.0.0.1",
 		$"--remote-debugging-port={port}"

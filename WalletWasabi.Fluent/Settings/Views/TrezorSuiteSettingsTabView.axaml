@@ -62,6 +62,23 @@
       </DockPanel>
     </DockPanel>
 
+    <DockPanel>
+      <TextBlock Text="Trezor Suite diagnostic logs" />
+      <DockPanel>
+        <Button Content="Open folder"
+                Command="{Binding OpenLogsCommand}"
+                Margin="8 0 0 0"
+                DockPanel.Dock="Right" />
+        <TextBox Text="{Binding LogDirectoryPath}"
+                 IsReadOnly="True"
+                 HorizontalContentAlignment="Left" />
+      </DockPanel>
+    </DockPanel>
+
+    <TextBlock Text="Suite is launched with debug file logging for this experiment. Logs may contain wallet metadata; review and redact them before sharing."
+               TextWrapping="Wrap"
+               Opacity="0.72" />
+
     <InfoMessage>
       <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" />
     </InfoMessage>

@@ -66,9 +66,9 @@ public class TrezorSuiteIntegrationTests
 			var executablePath = Path.Combine(temporaryDirectory.FullName, "trezor-suite");
 			File.WriteAllText(executablePath, "test");
 			using var handler = new SuccessfulBackendHandler();
-			#pragma warning disable RS0030 // A controlled test handler requires constructing its client directly.
+#pragma warning disable RS0030 // A controlled test handler requires constructing its client directly.
 			using var httpClient = new HttpClient(handler, disposeHandler: false);
-			#pragma warning restore RS0030
+#pragma warning restore RS0030
 			using var service = new TrezorSuiteIntegrationService(temporaryDirectory.FullName, httpClient);
 
 			var status = await service.GetStatusAsync(executablePath);
@@ -83,6 +83,43 @@ public class TrezorSuiteIntegrationTests
 		{
 			temporaryDirectory.Delete(recursive: true);
 		}
+	}
+
+	[Fact]
+	public void SuiteLaunchArgumentsEnableDiagnosticFileLogging()
+	{
+		var temporaryDirectory = Directory.CreateTempSubdirectory("ginger-trezor-logs-");
+		try
+		{
+			using var service = new TrezorSuiteIntegrationService(temporaryDirectory.FullName);
+
+			var arguments = service.GetLaunchArguments();
+
+			Assert.Contains("--log-write", arguments);
+			Assert.Contains("--log-level=debug", arguments);
+			Assert.Contains("--log-file=trezor-suite-log-%ts.txt", arguments);
+			Assert.Contains($"--log-path={service.LogDirectoryPath}", arguments);
+			Assert.Equal(
+				Path.Combine(temporaryDirectory.FullName, "TrezorSuiteIntegration", "SuiteLogs"),
+				service.LogDirectoryPath);
+		}
+		finally
+		{
+			temporaryDirectory.Delete(recursive: true);
+		}
+	}
+
+	[Fact]
+	public void BootstrapArgumentsIncludeDiagnosticFileLogging()
+	{
+		using var service = new TrezorSuiteIntegrationService(Path.GetTempPath());
+
+		var arguments = service.GetBootstrapArguments(12345);
+
+		Assert.Contains("--log-write", arguments);
+		Assert.Contains("--log-level=debug", arguments);
+		Assert.Contains("--remote-debugging-address=127.0.0.1", arguments);
+		Assert.Contains("--remote-debugging-port=12345", arguments);
 	}
 
 	private sealed class SuccessfulBackendHandler : HttpMessageHandler

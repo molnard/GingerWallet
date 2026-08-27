@@ -1,7 +1,7 @@
 # Testing the Trezor Suite Ginger CoinJoin PoC
 
 > [!WARNING]
-> This pull request is an experimental proof of concept, not a supported release feature. It changes an internal Trezor Suite debug setting and has not yet completed a real hardware CoinJoin round. Use only an empty or low-value test account. Never test with funds you cannot afford to lose.
+> This pull request is an experimental proof of concept, not a supported release feature. It changes an internal Trezor Suite debug setting and has received only limited real-hardware testing. One low-value round completed, but repeated-round behavior remains under investigation. Use only an empty or low-value test account. Never test with funds you cannot afford to lose.
 
 ## What this PoC tests
 
@@ -16,7 +16,7 @@ The PoC adds a **Settings > Trezor** tab to Ginger Wallet. It:
    - WabiSabi backend: `https://api.gingerwallet.io/`
    - Affiliation ID: `null`
 6. Reads the value back and marks it configured only if all three values match.
-7. Closes the temporary Suite process and opens Suite normally.
+7. Closes the temporary Suite process and opens Suite with diagnostic file logging enabled.
 
 Ginger does not monitor Suite after launch and does not access the Trezor seed, PIN, passphrase, or private keys.
 
@@ -72,6 +72,7 @@ dotnet run --project WalletWasabi.Fluent.Desktop/WalletWasabi.Fluent.Desktop.csp
    - **Last verified:** contains the time of this test
    - The primary button is now **Repair and open Trezor Suite**
    - **Restore original configuration** is available
+   - **Trezor Suite diagnostic logs** shows a path and **Open folder** opens it
 
 `Installed` and `Online` only confirm prerequisites. The override is successful only when **Configuration** says `Configured for Ginger` and **Last verified** has a timestamp.
 
@@ -87,7 +88,7 @@ Do not terminate Ginger or Suite while Ginger is applying or restoring the setti
 
 ## Test 3: Suite CoinJoin behavior
 
-The presence and reachability of CoinJoin controls can differ between Trezor Suite versions. This is the main unanswered part of the PoC.
+The presence and reachability of CoinJoin controls can differ between Trezor Suite versions. Automatic continuation into later rounds is still under investigation.
 
 1. Connect the Trezor device and open a Bitcoin account in Suite.
 2. Record whether Suite exposes any CoinJoin account or CoinJoin action after the override.
@@ -98,6 +99,12 @@ The presence and reachability of CoinJoin controls can differ between Trezor Sui
 7. Report the furthest successfully completed protocol phase. Do not publish addresses, transaction IDs, xpubs, screenshots containing balances, or full logs.
 
 Successful configuration proves only that Suite accepted the backend override. It does not prove that the current Suite UI exposes CoinJoin or that a hardware-signed round completes.
+
+### Collect diagnostic logs
+
+Every Trezor Suite process started by the Ginger Trezor tab uses Suite's `--log-write` and `--log-level=debug` switches. Logs are written to the `TrezorSuiteIntegration/SuiteLogs` directory below Ginger's platform-specific data directory. Use **Settings > Trezor > Open folder** to locate them. Coin-selection messages such as `Found account candidate`, `Utxos 0`, `detained`, or `Too many unavailable utxos` can help distinguish stale account data from a temporarily blocked input.
+
+When reporting a failure, close Suite first so that it flushes the current log, then copy only the relevant nearby `@trezor/coinjoin`, `CoinjoinClient`, or `CoinjoinBackend` lines. Logs may contain wallet metadata. Remove usernames, filesystem paths, wallet identifiers, addresses, transaction IDs, xpubs, balances, and any other sensitive details before sharing. Never post an entire raw log.
 
 ## Test 4: restore the original Suite setting
 
@@ -138,4 +145,5 @@ If a failure occurs, include the concise Ginger error and the relevant nearby lo
 - Compatibility is version-dependent because this uses Suite's internal debug storage.
 - The loopback debugging interface exists only during configuration or restoration, but another local process could theoretically connect to it.
 - Backend reachability and the last successful write are checked; there is no continuous Suite monitoring.
-- No completed mainnet hardware CoinJoin has been established by this PoC yet.
+- Diagnostic logs accumulate until the tester removes them from the folder shown by Ginger.
+- One low-value mainnet hardware CoinJoin has completed; reliable continuation into subsequent rounds has not yet been established.

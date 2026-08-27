@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.IO;
 using System.Reactive;
 using System.Threading.Tasks;
 using ReactiveUI;
@@ -48,13 +49,15 @@ public partial class TrezorSuiteSettingsTabViewModel : RoutableViewModel
 		ConfigureAndLaunchCommand = ReactiveCommand.CreateFromTask(ConfigureAndLaunchAsync);
 		LaunchCommand = ReactiveCommand.CreateFromTask(LaunchAsync);
 		RestoreCommand = ReactiveCommand.CreateFromTask(RestoreAsync);
+		OpenLogsCommand = ReactiveCommand.CreateFromTask(OpenLogsAsync);
 
 		EnableAutoBusyOn(
 			RefreshCommand,
 			ChooseExecutableCommand,
 			ConfigureAndLaunchCommand,
 			LaunchCommand,
-			RestoreCommand);
+			RestoreCommand,
+			OpenLogsCommand);
 
 		RefreshCommand.Execute().Subscribe();
 	}
@@ -64,6 +67,8 @@ public partial class TrezorSuiteSettingsTabViewModel : RoutableViewModel
 	public ReactiveCommand<Unit, Unit> ConfigureAndLaunchCommand { get; }
 	public ReactiveCommand<Unit, Unit> LaunchCommand { get; }
 	public ReactiveCommand<Unit, Unit> RestoreCommand { get; }
+	public ReactiveCommand<Unit, Unit> OpenLogsCommand { get; }
+	public string LogDirectoryPath => _integrationService.LogDirectoryPath;
 
 	private async Task RefreshAsync()
 	{
@@ -132,6 +137,20 @@ public partial class TrezorSuiteSettingsTabViewModel : RoutableViewModel
 		catch (Exception ex)
 		{
 			await HandleOperationErrorAsync(ex);
+		}
+	}
+
+	private async Task OpenLogsAsync()
+	{
+		try
+		{
+			Directory.CreateDirectory(LogDirectoryPath);
+			UiContext.FileSystem.OpenFolderInFileExplorer(LogDirectoryPath);
+		}
+		catch (Exception ex)
+		{
+			Logger.LogError(ex);
+			await ShowErrorAsync("Trezor Suite logs", ex.Message, "Ginger could not open the Trezor Suite log folder.");
 		}
 	}
 
