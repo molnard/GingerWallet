@@ -75,7 +75,6 @@ internal class Participant
 
 		var apiClient = new WabiSabiHttpApiClient(HttpClientFactory.NewHttpClientWithDefaultCircuit());
 		using var roundStateUpdater = new RoundStateUpdater(WabiSabiIntegrationTestConstants.RequestInterval, ["CoinJoinCoordinatorIdentifier"], apiClient, false);
-		await roundStateUpdater.StartAsync(cancellationToken).ConfigureAwait(false);
 
 		var outputProvider = new OutputProvider(Wallet);
 		var coinJoinClient = WabiSabiTestFactory.CreateTestCoinJoinClient(HttpClientFactory, Wallet, outputProvider, roundStateUpdater, false);
@@ -92,11 +91,14 @@ internal class Participant
 			.Select(x => new SmartCoin(SplitTransaction, x.IndexedTxOut.N, CreateHdPubKey(x.HdPubKey)))
 			.ToList();
 
-		// Run the coinjoin client task.
-		var ret = await coinJoinClient.StartCoinJoinAsync(async () => await Task.FromResult(smartCoins), true, cancellationToken).ConfigureAwait(false);
-
-		await roundStateUpdater.StopAsync(cancellationToken).ConfigureAwait(false);
-
-		return ret;
+		await roundStateUpdater.StartAsync(cancellationToken).ConfigureAwait(false);
+		try
+		{
+			return await coinJoinClient.StartCoinJoinAsync(async () => await Task.FromResult(smartCoins), true, cancellationToken).ConfigureAwait(false);
+		}
+		finally
+		{
+			await roundStateUpdater.StopAsync(CancellationToken.None).ConfigureAwait(false);
+		}
 	}
 }
