@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using NBitcoin;
+using WalletWasabi.BitcoinCore.Endpointing;
 using WalletWasabi.Services;
 using Xunit;
 
@@ -16,12 +17,6 @@ public class SingleInstanceCheckerTests
 {
 	/// <summary>Everything takes longer on CI. Timeouts sane on users' machines are too short for CI.</summary>
 	private const int TimeoutMultiplier = 3;
-
-	/// <summary>
-	/// Global port may collide when several PRs are being tested on CI at the same time,
-	/// so we need some sort of non-determinism here (i.e. random numbers).
-	/// </summary>
-	private static int GenerateRandomPort() => Random.Shared.Next(37128, 50000);
 
 	[Fact]
 	public void NetworkToPortUsesUserScope()
@@ -61,9 +56,10 @@ public class SingleInstanceCheckerTests
 	[Fact]
 	public async Task SingleInstanceTestsAsync()
 	{
-		int mainNetPort = GenerateRandomPort();
-		int testNetPort = mainNetPort + 1;
-		int regTestPort = testNetPort + 1;
+		var ports = PortFinder.GetRandomPorts(3);
+		int mainNetPort = ports[0];
+		int testNetPort = ports[1];
+		int regTestPort = ports[2];
 
 		// Disposal test.
 		await using (SingleInstanceChecker sic = new(mainNetPort, TimeoutMultiplier))
@@ -77,7 +73,7 @@ public class SingleInstanceCheckerTests
 		Assert.Equal(WasabiInstanceStatus.NoOtherInstanceIsRunning, status);
 
 		await using SingleInstanceChecker sicMainNet2 = new(mainNetPort, TimeoutMultiplier);
-		status = await sicMainNet.CheckSingleInstanceAsync();
+		status = await sicMainNet2.CheckSingleInstanceAsync();
 		Assert.Equal(WasabiInstanceStatus.AnotherInstanceIsRunning, status);
 
 		// testnet
@@ -102,7 +98,7 @@ public class SingleInstanceCheckerTests
 	[Fact]
 	public async Task OtherInstanceStartedTestsAsync()
 	{
-		int mainNetPort = GenerateRandomPort();
+		int mainNetPort = PortFinder.GetRandomPorts(1)[0];
 
 		// Disposal test.
 		await using SingleInstanceChecker firstInstance = new(mainNetPort, TimeoutMultiplier);
