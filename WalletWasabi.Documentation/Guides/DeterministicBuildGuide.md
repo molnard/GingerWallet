@@ -15,7 +15,9 @@ Ginger publishes both portable archives and signed installers. Their verificatio
 
 Archive metadata can differ even when every extracted file matches, so verification compares the extracted payload rather than the ZIP container bytes.
 
-WalletScrutiny's [artifact-level verdicts](https://github.com/WalletScrutiny/WalletScrutinyCom/blob/master/docs/verifications.md#artifact-level-verdicts) apply to the specific download being checked. Its [Ginger product definition](https://github.com/WalletScrutiny/WalletScrutinyCom/blob/master/_desktop/gingerwallet.md) currently selects `Ginger-*.msi` for Windows. A successful portable ZIP comparison therefore does not automatically verify the MSI: complete section 4 for the MSI and report the signature-aware comparison explicitly.
+WalletScrutiny's [published Windows verification](https://walletscrutiny.com/desktop/gingerwallet/#verificationId=7c15706f45060e06464653ae0ba9537c936a4c29bb2a183d3f4d7a74d831945e) used `Ginger-2.0.25-win-x64.zip` with the attached `gingerwallet_build.sh` v0.7.7. That script compares ordinary SHA-256 hashes of every extracted file and **explicitly rejects MSI input**; it does not normalize Authenticode signatures. Keep using the unsigned Windows ZIP for this verification workflow. Signing only the MSI's executables does not change that ZIP.
+
+The [Ginger product definition](https://github.com/WalletScrutiny/WalletScrutinyCom/blob/master/_desktop/gingerwallet.md) currently lists `Ginger-*.msi` for Windows, which conflicts with the published script's accepted inputs. The verification report records a local build-server metadata override to select `Ginger-*-win-x64.zip`. That metadata needs to select the ZIP when using this script; removing executable signatures from an MSI would not make its unsupported format work. Section 4 is a separate MSI payload check, not a claim that WalletScrutiny's script supports MSI verification. [Artifact-level verdicts](https://github.com/WalletScrutiny/WalletScrutinyCom/blob/master/docs/verifications.md#artifact-level-verdicts) must stay tied to the actual download tested.
 
 ## 1. Download the reference payload and match its toolchain
 
@@ -125,7 +127,9 @@ Write-Output "All $($builtManifest.Count) portable payload files match exactly."
 
 Do not exclude a differing `BUILDINFO.json`: check the SDK, packager runtime and source commit instead. For the other portable archives, repeat the comparison with the corresponding directory: `linux-x64` for `Ginger-<version>-linux-x64.zip`, `osx-x64` for `Ginger-<version>-macOS-x64.zip`, or `osx-arm64` for `Ginger-<version>-macOS-arm64.zip`.
 
-## 4. Verify the signed Windows MSI
+## 4. Independently verify the signed Windows MSI
+
+This supplementary procedure is independent of WalletScrutiny's published `gingerwallet_build.sh` v0.7.7, which rejects MSI files. It does not replace the ordinary SHA-256 comparison of the unsigned ZIP in section 3.
 
 Starting with v2.0.26, the release process creates the portable ZIP first, signs `wassabee.exe` and `wassabeed.exe`, builds the MSI from that signed directory, and finally signs the MSI itself. Authenticode embeds a certificate and a timestamp in each signed file, so independently built unsigned files cannot have the same flat-file SHA-256 value.
 
@@ -212,7 +216,9 @@ This procedure verifies that the signed executables contain the reproducible app
 
 ## 5. Record the result for WalletScrutiny
 
-Record the version, source commit, host OS, both toolchain versions, commands and comparison output. Identify each checked artifact by its original filename and **official download SHA-256**, including the MSI when section 4 was completed. WalletScrutiny's artifact hashes identify the downloaded files, not a newly built ZIP or a normalized executable.
+Record the version, source commit, host OS, both toolchain versions, commands and comparison output. For `gingerwallet_build.sh` v0.7.7, supply `Ginger-<version>-win-x64.zip` with `--arch x86_64-windows --type standalone`, or let the script select the architecture-specific ZIP. Do not pass an MSI: the script exits before building when `--binary` names an `.msi` file. Its build step dispatches `gingerwallet-build.yml` on `xrviv/WalletScrutinyCom` and requires appropriate GitHub access; the local procedure above does not require access to that workflow.
+
+Identify each checked artifact by its original filename and **official download SHA-256**. WalletScrutiny's artifact hashes identify the downloaded files, not a newly built ZIP or a normalized executable. Any separate MSI check from section 4 must name the MSI's own hash and explicitly describe the different comparison method.
 
 Report portable payload equality and MSI payload equality modulo validated Authenticode signatures separately. Do not report raw MSI byte equality, or extend a Windows result to untested Linux/macOS artifacts. WalletScrutiny decides how to classify the submitted evidence; publishing this guide does not change its artifact selection or verdict.
 
