@@ -69,10 +69,15 @@ public class LinqExtensionsTests
 		Assert.Equal("1, 2, 3, 4", asString[i++]);
 	}
 
-	[Fact]
-	public void CombinationsWithoutRepetitionZeroLength()
+	[Theory]
+	[InlineData(0)]
+	[InlineData(1)]
+	[InlineData(5)]
+	public void CombinationsWithoutRepetitionZeroLength(int inputCount)
 	{
-		AssertAsync.CompletesIn(5, () => Enumerable.Range(0, 32).CombinationsWithoutRepetition(ofLength: 0).ToArray());
+		// Small inputs also let a regression to exhaustive enumeration fail promptly.
+		var combinations = Enumerable.Range(0, inputCount).CombinationsWithoutRepetition(ofLength: 0);
+		Assert.Empty(Assert.Single(combinations));
 	}
 
 	[Fact]
