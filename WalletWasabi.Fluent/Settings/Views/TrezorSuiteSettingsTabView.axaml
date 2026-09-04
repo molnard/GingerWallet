@@ -62,6 +62,21 @@
       </DockPanel>
     </DockPanel>
 
+    <Border Padding="16" CornerRadius="8" Background="{DynamicResource Layer1BackgroundBrush}">
+      <StackPanel Spacing="8">
+        <DockPanel>
+          <TextBlock Text="Suite anonymity target" />
+          <TextBox Text="{Binding TargetAnonymity, Mode=TwoWay}"
+                   Width="100" HorizontalAlignment="Right" MaxLength="3"
+                   IsEnabled="{Binding !IsBusy}" />
+        </DockPanel>
+        <TextBlock Text="Default: 3. Enter a whole number from 2 to 100. Saved and applied when you choose Configure / Repair, not Open. Applies to all remembered Bitcoin CoinJoin accounts in Custom mode; create new accounts in Suite first, then configure again."
+                   TextWrapping="Wrap" />
+        <TextBlock Text="Targets below 5 provide very low privacy. Lowering the target changes which coins Suite labels Private; it does not improve their anonymity. Existing mining fee limits and round-skipping settings are preserved."
+                   TextWrapping="Wrap" Opacity="0.72" />
+      </StackPanel>
+    </Border>
+
     <DockPanel>
       <TextBlock Text="Trezor Suite diagnostic logs" />
       <DockPanel>

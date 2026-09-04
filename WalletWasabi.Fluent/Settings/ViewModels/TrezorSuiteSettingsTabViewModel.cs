@@ -34,6 +34,7 @@ public partial class TrezorSuiteSettingsTabViewModel : RoutableViewModel
 	[AutoNotify] private bool _isConfigured;
 	[AutoNotify] private bool _canRestore;
 	[AutoNotify] private string _configureButtonText = "Configure and open Trezor Suite";
+	[AutoNotify] private string _targetAnonymity = "3";
 
 	public TrezorSuiteSettingsTabViewModel()
 		: this(new TrezorSuiteIntegrationService(Services.DataDir))
@@ -43,6 +44,10 @@ public partial class TrezorSuiteSettingsTabViewModel : RoutableViewModel
 	internal TrezorSuiteSettingsTabViewModel(TrezorSuiteIntegrationService integrationService)
 	{
 		_integrationService = integrationService;
+		if (Services.IsInitialized)
+		{
+			TargetAnonymity = Services.UiConfig.TrezorSuiteTargetAnonymity.ToString(CultureInfo.InvariantCulture);
+		}
 
 		RefreshCommand = ReactiveCommand.CreateFromTask(RefreshAsync);
 		ChooseExecutableCommand = ReactiveCommand.CreateFromTask(ChooseExecutableAsync);
@@ -100,9 +105,17 @@ public partial class TrezorSuiteSettingsTabViewModel : RoutableViewModel
 		try
 		{
 			_lastConfigurationError = null;
+			if (!int.TryParse(TargetAnonymity, NumberStyles.None, CultureInfo.InvariantCulture, out var target) || target is < 2 or > 100)
+			{
+				throw new TrezorSuiteIntegrationException("Enter a whole-number privacy target from 2 to 100.");
+			}
+			if (Services.IsInitialized)
+			{
+				Services.UiConfig.TrezorSuiteTargetAnonymity = target;
+				Services.UiConfig.ToFile();
+			}
 			StatusMessage = "Configuring Trezor Suite for Ginger CoinJoin…";
-			ApplyStatus(await _integrationService.ConfigureAndLaunchAsync(SuiteExecutablePath));
-			StatusMessage = "Trezor Suite opened with Ginger CoinJoin configured.";
+			ApplyStatus(await _integrationService.ConfigureAndLaunchAsync(SuiteExecutablePath, targetAnonymity: target));
 		}
 		catch (Exception ex)
 		{
@@ -171,7 +184,7 @@ public partial class TrezorSuiteSettingsTabViewModel : RoutableViewModel
 		ConfigureButtonText = status.IsConfigured ? "Repair and open Trezor Suite" : "Configure and open Trezor Suite";
 		StatusMessage = status.Message;
 
-		if (!status.IsConfigured && _lastConfigurationError is { } error)
+		if (_lastConfigurationError is { } error)
 		{
 			ConfigurationStatus = "Configuration failed";
 			StatusMessage = $"Last configuration attempt failed: {error}";

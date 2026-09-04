@@ -4,6 +4,8 @@ using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json;
+using WalletWasabi.Daemon;
 using WalletWasabi.TrezorSuite;
 using Xunit;
 
@@ -11,6 +13,37 @@ namespace WalletWasabi.Tests.UnitTests.TrezorSuite;
 
 public class TrezorSuiteIntegrationTests
 {
+	[Fact]
+	public void PrivacyTargetDefaultsToThreeAndOldBackupsRemainReadable()
+	{
+		Assert.Equal(3, new UiConfig().TrezorSuiteTargetAnonymity);
+		var state = JsonSerializer.Deserialize<TrezorSuiteIntegrationState>("""
+			{"SuiteExecutablePath":"suite","OriginalSettingsExisted":false,"OriginalSettingsJson":null,"LastVerifiedAt":null}
+			""");
+		Assert.NotNull(state);
+		Assert.Null(state.OriginalAnonymityTargets);
+		Assert.Null(state.AppliedAnonymityTarget);
+	}
+
+	[Theory]
+	[InlineData(0)]
+	[InlineData(1)]
+	[InlineData(101)]
+	public async Task InvalidPrivacyTargetIsRejectedBeforeLaunchingSuite(int target)
+	{
+		using var service = new TrezorSuiteIntegrationService(Path.GetTempPath());
+		await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.ConfigureAndLaunchAsync(targetAnonymity: target));
+	}
+
+	[Theory]
+	[InlineData(2)]
+	[InlineData(3)]
+	[InlineData(100)]
+	public void PrivacyScriptUsesValidatedTarget(int target)
+	{
+		Assert.Contains($"const target = {target};", TrezorSuitePrivacyScripts.Apply(target, new()));
+	}
+
 	[Fact]
 	public void LocatorPrefersExplicitExecutablePath()
 	{

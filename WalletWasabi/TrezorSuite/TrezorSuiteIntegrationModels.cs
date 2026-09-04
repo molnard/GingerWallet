@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace WalletWasabi.TrezorSuite;
 
@@ -16,7 +17,10 @@ public sealed record TrezorSuiteIntegrationState(
 	string SuiteExecutablePath,
 	bool OriginalSettingsExisted,
 	string? OriginalSettingsJson,
-	DateTimeOffset? LastVerifiedAt);
+	DateTimeOffset? LastVerifiedAt,
+	Dictionary<string, int>? OriginalAnonymityTargets = null,
+	int? AppliedAnonymityTarget = null,
+	int PrivacyAccountCount = 0);
 
 internal sealed record TrezorSuiteStoredSettings(bool Exists, string? Json);
 

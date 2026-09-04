@@ -193,7 +193,7 @@ internal sealed class TrezorSuiteCdpClient : IAsyncDisposable
 		url?.StartsWith("devtools://", StringComparison.OrdinalIgnoreCase) is true ||
 		url?.StartsWith("chrome-devtools://", StringComparison.OrdinalIgnoreCase) is true;
 
-	private async Task<JsonElement> EvaluateAsync(string expression, CancellationToken cancellationToken)
+	internal async Task<JsonElement> EvaluateAsync(string expression, CancellationToken cancellationToken)
 	{
 		var messageId = Interlocked.Increment(ref _messageId);
 		var payload = JsonSerializer.Serialize(new
@@ -284,7 +284,7 @@ internal sealed class TrezorSuiteCdpClient : IAsyncDisposable
 		}
 	}
 
-	private const string DatabaseHelpers = """
+	internal const string DatabaseHelpers = """
 		const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 		const openSuiteDatabaseOnce = () => new Promise((resolve, reject) => {
 			const request = indexedDB.open('trezor-suite');

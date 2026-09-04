@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
@@ -50,7 +51,10 @@ public sealed class TrezorSuiteIntegrationService : IDisposable
 			: !backendAvailable
 				? "Ginger's CoinJoin backend is currently unavailable."
 				: isConfigured
-					? "Ginger CoinJoin was configured and verified."
+					? state!.AppliedAnonymityTarget is { } target
+						? $"Ginger CoinJoin was configured. Privacy target {target} was verified for {state.PrivacyAccountCount} saved Bitcoin CoinJoin account(s)." +
+							(state.PrivacyAccountCount == 0 ? " No saved accounts: create and remember an account in Suite, select Custom, then configure again to apply the target." : "")
+						: "Ginger CoinJoin was configured and verified."
 					: "Trezor Suite is ready to be configured for Ginger CoinJoin.";
 
 		return new TrezorSuiteIntegrationStatus(
@@ -64,8 +68,9 @@ public sealed class TrezorSuiteIntegrationService : IDisposable
 			message);
 	}
 
-	public async Task<TrezorSuiteIntegrationStatus> ConfigureAndLaunchAsync(string? preferredPath = null, CancellationToken cancellationToken = default)
+	public async Task<TrezorSuiteIntegrationStatus> ConfigureAndLaunchAsync(string? preferredPath = null, CancellationToken cancellationToken = default, int targetAnonymity = 3)
 	{
+		TrezorSuitePrivacyScripts.ValidateTarget(targetAnonymity);
 		await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
 		try
 		{
@@ -101,10 +106,25 @@ public sealed class TrezorSuiteIntegrationService : IDisposable
 					await SaveStateAsync(state, cancellationToken).ConfigureAwait(false);
 				}
 
+				// Back up targets separately from debug settings, including accounts added since the first configuration.
+				state = state with { LastVerifiedAt = null };
+				await SaveStateAsync(state, cancellationToken).ConfigureAwait(false);
+				var privacy = await cdpClient.EvaluateAsync(TrezorSuitePrivacyScripts.Read(), cancellationToken).ConfigureAwait(false);
+				var targets = privacy.GetProperty("targets").Deserialize<Dictionary<string, int>>()!;
+				var originals = new Dictionary<string, int>(state.OriginalAnonymityTargets ?? new());
+				foreach (var (key, value) in targets)
+				{
+					originals.TryAdd(key, value);
+				}
+				state = state with { OriginalAnonymityTargets = originals, LastVerifiedAt = null };
+				await SaveStateAsync(state, cancellationToken).ConfigureAwait(false);
 				await cdpClient.ApplyGingerOverrideAsync(cancellationToken).ConfigureAwait(false);
+				var applied = await cdpClient.EvaluateAsync(TrezorSuitePrivacyScripts.Apply(targetAnonymity, originals), cancellationToken).ConfigureAwait(false);
 				state = state with
 				{
 					SuiteExecutablePath = executablePath,
+					AppliedAnonymityTarget = targetAnonymity,
+					PrivacyAccountCount = applied.GetProperty("count").GetInt32(),
 					LastVerifiedAt = DateTimeOffset.UtcNow
 				};
 				await SaveStateAsync(state, cancellationToken).ConfigureAwait(false);
@@ -147,6 +167,10 @@ public sealed class TrezorSuiteIntegrationService : IDisposable
 					port,
 					SuiteStartupTimeout,
 					cancellationToken).ConfigureAwait(false);
+				if (state.OriginalAnonymityTargets is { Count: > 0 } originals)
+				{
+					await cdpClient.EvaluateAsync(TrezorSuitePrivacyScripts.Restore(originals), cancellationToken).ConfigureAwait(false);
+				}
 				await cdpClient.RestoreDebugSettingsAsync(
 					state.OriginalSettingsExisted,
 					state.OriginalSettingsJson,

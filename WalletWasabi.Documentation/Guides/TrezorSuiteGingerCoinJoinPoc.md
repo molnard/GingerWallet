@@ -15,7 +15,7 @@ The PoC adds a **Settings > Trezor** tab to Ginger Wallet. It:
    - Coordinator: `https://api.gingerwallet.io/WabiSabi/`
    - WabiSabi backend: `https://api.gingerwallet.io/`
    - Affiliation ID: `null`
-6. Reads the value back and marks it configured only if all three values match.
+6. Reads the value back and marks it configured only if all three values match. It also backs up and applies the selected anonymity target to remembered Bitcoin CoinJoin accounts with Custom settings, verifying each write.
 7. Closes the temporary Suite process and opens Suite with diagnostic file logging enabled.
 
 Ginger does not monitor Suite after launch and does not access the Trezor seed, PIN, passphrase, or private keys.
@@ -77,6 +77,22 @@ dotnet run --project WalletWasabi.Fluent.Desktop/WalletWasabi.Fluent.Desktop.csp
 `Installed` and `Online` only confirm prerequisites. The override is successful only when **Configuration** says `Configured for Ginger` and **Last verified** has a timestamp.
 
 ## Test 2: failure handling
+
+### Anonymity target
+
+The **Suite anonymity target** box defaults to **3** and accepts whole numbers from **2 to 100**. The value is saved in Ginger when you configure/repair Suite. This is a low-privacy experimental default, not a privacy guarantee. Lowering it changes the Private classification, not the actual anonymity of existing coins.
+
+1. In Suite, create and remember the test Bitcoin CoinJoin account. Under **Details**, select **Custom** and check the fee limit and round-skipping setting. Close Suite completely.
+2. In Ginger, enter the desired target and click **Configure / Repair and open Trezor Suite**. This applies to **all remembered Bitcoin CoinJoin accounts** in that Suite profile, not testnet accounts.
+3. Verify the target in Suite's **Details** tab. The existing fee limit and round-skipping setting must be unchanged.
+4. Confirm Ginger reports the number of saved accounts updated. With no saved accounts it explicitly reports zero: create/remember the account, select Custom and configure again. Newly created accounts do not inherit Ginger's value automatically.
+5. Try an empty, fractional, nonnumeric, or out-of-range value. Ginger must refuse it before launching Suite. Recommended or incompatible saved settings must produce a clear error rather than invented fee settings.
+6. Change the target in Suite, close it, and use **Open Trezor Suite** from Ginger: it must not overwrite that change. **Configure / Repair** explicitly reapplies the value in Ginger's box.
+7. **Restore original configuration** restores the first backed-up target for each modified account while preserving its other current settings. Deleted accounts are not recreated. Original backups made by older PoC builds remain supported.
+
+The integration backup now also contains Suite account identifiers and original target values. Treat it as private wallet metadata; do not publish it.
+
+### Running Suite / configuration failures
 
 1. Leave Trezor Suite running.
 2. Click **Repair and open Trezor Suite** in Ginger.
