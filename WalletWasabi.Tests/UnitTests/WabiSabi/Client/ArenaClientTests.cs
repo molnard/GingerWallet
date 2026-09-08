@@ -183,8 +183,7 @@ public class ArenaClientTests
 		mockRpc.OnGetRawTransactionAsync = (_, _) =>
 			Task.FromResult(BitcoinFactory.CreateTransaction(rnd));
 
-		using Arena arena = await ArenaTestFactory.From(config).With(mockRpc).CreateAndStartAsync(rnd, round);
-		await arena.TriggerAndWaitRoundAsync(TimeSpan.FromSeconds(5));
+		using Arena arena = ArenaTestFactory.From(config).With(mockRpc).Create(rnd, round);
 
 		using var memoryCache = new MemoryCache(new MemoryCacheOptions());
 		var idempotencyRequestCache = new IdempotencyRequestCache(memoryCache);
@@ -227,8 +226,15 @@ public class ArenaClientTests
 			inputRegistrationResponse.IssuedAmountCredentials,
 			inputRegistrationResponse.IssuedVsizeCredentials,
 			CancellationToken.None);
+		Assert.False(connectionConfirmationResponse1.Value);
 
-		await arena.TriggerAndWaitRoundAsync(TimeSpan.FromSeconds(5));
+		// Complete the first confirmation before the automatic startup pass can advance the round.
+		EventAwaiter<TimeSpan> initialArenaRound = new(
+			h => arena.Tick += h,
+			h => arena.Tick -= h);
+		using var initialArenaRoundTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+		await arena.StartAsync(initialArenaRoundTimeout.Token);
+		await initialArenaRound.WaitAsync(initialArenaRoundTimeout.Token);
 		Assert.Equal(Phase.ConnectionConfirmation, round.Phase);
 
 		// Phase: Connection Confirmation
@@ -240,6 +246,7 @@ public class ArenaClientTests
 			connectionConfirmationResponse1.IssuedAmountCredentials,
 			connectionConfirmationResponse1.IssuedVsizeCredentials,
 			CancellationToken.None);
+		Assert.True(connectionConfirmationResponse2.Value);
 
 		await arena.TriggerAndWaitRoundAsync(TimeSpan.FromSeconds(1));
 
