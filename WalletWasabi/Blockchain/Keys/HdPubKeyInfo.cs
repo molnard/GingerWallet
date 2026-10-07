@@ -10,9 +10,11 @@ public record HdPubKeyInfo
 		ScriptPubKeyType = scriptPubKeyType;
 		ScriptPubKey = hdPubKey.PubKey.GetScriptPubKey(scriptPubKeyType);
 		CompressedScriptPubKey = ScriptPubKey.ToCompressedBytes();
+		RawScriptPubKey = ScriptPubKey.ToBytes();
 	}
 	public HdPubKey HdPubKey { get; }
 	public ScriptPubKeyType ScriptPubKeyType { get; set; }
 	public Script ScriptPubKey { get; }
 	public byte[] CompressedScriptPubKey { get; }
+	public byte[] RawScriptPubKey { get; }
 }

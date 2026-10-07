@@ -58,7 +58,9 @@ public partial class WalletLoadWorkflow
 		_stopwatch = Stopwatch.StartNew();
 		_disposables.Add(Disposable.Create(_stopwatch.Stop));
 
-		Observable.FromAsync(() => Services.HostedServices.Get<WasabiSynchronizer>().InitialRequestTcs.Task)
+		Observable.FromAsync(() => Services.Config.UseP2pFilters
+			? Task.FromResult(false)
+			: Services.HostedServices.Get<WasabiSynchronizer>().InitialRequestTcs.Task)
 			.ObserveOn(RxApp.MainThreadScheduler)
 			.SubscribeAsync(LoadWalletAsync)
 			.DisposeWith(_disposables);

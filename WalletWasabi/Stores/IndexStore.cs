@@ -227,6 +227,14 @@ public class IndexStore : IIndexStore, IAsyncDisposable
 			}
 
 			SmartHeaderChain.RemoveTip();
+			if (UseBip158 && SmartHeaderChain.Tip is null)
+			{
+				// A deep peer-chain reorg can outlive the in-memory header window.
+				foreach (var retained in IndexStorage.FetchLast(n: 5000))
+				{
+					SmartHeaderChain.AppendTip(retained.Header);
+				}
+			}
 		}
 
 		Reorged?.Invoke(this, filter);

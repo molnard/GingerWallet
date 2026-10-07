@@ -27,9 +27,10 @@ public sealed class P2pFilterSynchronizer : BackgroundService
 	private readonly string _headersPath;
 	private readonly Bip158Checkpoints.Checkpoint[] _checkpoints;
 	private readonly SortedDictionary<uint, uint256> _filterHeaders = new();
-	private uint _verifiedHeight;
-	private uint256 _verifiedHeader;
+	private volatile uint _verifiedHeight;
+	private uint256 _verifiedHeader = uint256.Zero;
 	private DateTimeOffset _lastSave;
+	internal uint VerifiedHeight => _verifiedHeight;
 
 	public P2pFilterSynchronizer(P2pNetwork p2p, BitcoinStore store, string workDirectory, Network network)
 	{
@@ -57,7 +58,7 @@ public sealed class P2pFilterSynchronizer : BackgroundService
 				_headers.SetTip(new ChainedBlock(network.GetGenesis().Header, 0));
 			}
 		}
-		p2p.Nodes.NodeConnectionParameters.TemplateBehaviors.Add(new ChainBehavior(_headers)
+		p2p.Nodes.NodeConnectionParameters.TemplateBehaviors.Add(new FilterChainBehavior(_headers)
 		{
 			StripHeader = false,
 			CanRespondToGetHeaders = false
@@ -86,6 +87,11 @@ public sealed class P2pFilterSynchronizer : BackgroundService
 			}
 			await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken).ConfigureAwait(false);
 		}
+	}
+
+	public override async Task StopAsync(CancellationToken cancellationToken)
+	{
+		await base.StopAsync(cancellationToken).ConfigureAwait(false);
 		SaveHeaders();
 	}
 
@@ -100,7 +106,7 @@ public sealed class P2pFilterSynchronizer : BackgroundService
 		}
 		var tip = _store.SmartHeaderChain;
 		tip.SetServerTipHeight((uint)Math.Max(_headers.Height, peers.Max(x => x.PeerVersion.StartHeight)));
-		if (_headers.Height < tip.TipHeight)
+		if (_headers.Height < _checkpoints[0].Height || (_headers.Height < tip.TipHeight && peers.Any(x => x.Behaviors.Find<FilterChainBehavior>()?.IsCaughtUp != true)))
 		{
 			return false; // Header synchronization may still be catching up with the existing cache.
 		}
@@ -196,12 +202,18 @@ public sealed class P2pFilterSynchronizer : BackgroundService
 			}
 			await _store.IndexStore.AddNewFiltersAsync(filters).ConfigureAwait(false);
 		}
-		else if (stop == tip.TipHeight)
+		else
 		{
-			var stored = (await _store.IndexStore.FetchBatchAsync(stop, 1, timeout.Token).ConfigureAwait(false)).Single();
-			if (Hashes.DoubleSHA256(stored.Filter.ToBytes()) != hashes[^1])
+			var stored = await _store.IndexStore.FetchBatchAsync(start, hashes.Count, timeout.Token).ConfigureAwait(false);
+			for (int i = 0; i < stored.Length; i++)
 			{
-				throw new InvalidOperationException("Cached filter does not match authenticated filter headers.");
+				if (Hashes.DoubleSHA256(stored[i].Filter.ToBytes()) != hashes[i])
+				{
+					Logger.LogWarning($"Replacing corrupt compact filter cache from height {stored[i].Header.Height}.");
+					await _store.IndexStore.RemoveAllNewerThanAsync(stored[i].Header.Height - 1).ConfigureAwait(false);
+					ResetFilterHeaders();
+					return true;
+				}
 			}
 		}
 		if (_headers.GetBlock((int)stop)?.HashBlock != stopBlock.HashBlock)
@@ -267,9 +279,15 @@ public sealed class P2pFilterSynchronizer : BackgroundService
 		}
 		var reader = filter.GetNewGRStreamReader();
 		int decoded = 0;
-		while (reader.TryRead(out _))
+		ulong previousValue = 0;
+		while (reader.TryRead(out var value))
 		{
 			decoded++;
+			if (decoded > filter.N || value < previousValue || value >= (ulong)filter.N * filter.M)
+			{
+				throw new InvalidOperationException("Compact filter values are outside their valid range.");
+			}
+			previousValue = value;
 		}
 		if (decoded != filter.N)
 		{
@@ -282,10 +300,38 @@ public sealed class P2pFilterSynchronizer : BackgroundService
 	{
 		if (endpoint is IPEndPoint ip)
 		{
-			var bytes = ip.Address.MapToIPv6().GetAddressBytes();
-			return ip.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? Convert.ToHexString(bytes[^4..^2]) : Convert.ToHexString(bytes[..4]);
+			var address = ip.Address.IsIPv4MappedToIPv6 ? ip.Address.MapToIPv4() : ip.Address;
+			var bytes = address.GetAddressBytes();
+			return Convert.ToHexString(bytes[..(address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? 2 : 4)]);
 		}
 		return endpoint is DnsEndPoint dns ? dns.Host.ToLowerInvariant() : endpoint.ToString() ?? "";
+	}
+
+	private sealed class FilterChainBehavior(ConcurrentChain chain) : ChainBehavior(chain)
+	{
+		public bool IsCaughtUp { get; private set; }
+
+		protected override void AttachCore()
+		{
+			base.AttachCore();
+			AttachedNode.MessageReceived += OnMessageReceived;
+		}
+
+		protected override void DetachCore()
+		{
+			AttachedNode.MessageReceived -= OnMessageReceived;
+			base.DetachCore();
+		}
+
+		private void OnMessageReceived(Node node, IncomingMessage message)
+		{
+			if (message.Message.Payload is HeadersPayload headers)
+			{
+				IsCaughtUp = headers.Headers.Count < 2000 && !InvalidHeaderReceived;
+			}
+		}
+
+		public override object Clone() => new FilterChainBehavior(Chain) { StripHeader = false, CanRespondToGetHeaders = false };
 	}
 
 	private void ResetFilterHeaders()

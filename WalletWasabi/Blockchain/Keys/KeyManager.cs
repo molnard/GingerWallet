@@ -469,7 +469,7 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 	{
 		lock (CriticalStateLock)
 		{
-			return HdPubKeyCache.Select(x => new ScriptPubKeySpendingInfo(useBip158 ? x.ScriptPubKey.ToBytes() : x.CompressedScriptPubKey, x.HdPubKey.LatestSpendingHeight));
+			return HdPubKeyCache.Select(x => new ScriptPubKeySpendingInfo(useBip158 ? x.RawScriptPubKey : x.CompressedScriptPubKey, x.HdPubKey.LatestSpendingHeight));
 		}
 	}
 
@@ -725,6 +725,7 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 
 	#region BlockchainState
 
+	[JsonIgnore]
 	public uint? BirthHeight => BlockchainState.BirthHeight;
 
 	public Height GetBestHeight()
@@ -785,6 +786,8 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 				TaprootInternalKeyGenerator = internalGenerator with { MinGapLimit = minGapLimit };
 			}
 			MinGapLimit = minGapLimit;
+			// An explicit rescan may target payments older than a newly created wallet birthday.
+			BlockchainState.BirthHeight = null;
 			AssertCleanKeysIndexed();
 			// Wallet serialization subtracts 101 blocks for reorg/maturity safety.
 			// Persist the block before the requested starting height so it is scanned inclusively.
