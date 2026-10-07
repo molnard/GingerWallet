@@ -2217,4 +2217,46 @@
   <data name="SecretHuntSettingsEnable" xml:space="preserve">
     <value>Enable/disable the use of this wallet for Secret Hunt.</value>
   </data>
+  <data name="WalletBackupType" xml:space="preserve">
+    <value>Wallet backup type</value>
+  </data>
+  <data name="MultiShareBackup" xml:space="preserve">
+    <value>Multi-share backup (SLIP39)</value>
+  </data>
+  <data name="MultiShareDescription" xml:space="preserve">
+    <value>A multi-share backup splits the wallet secret into parts. You choose how many parts are required to recover it. Keep each share in a separate safe place.</value>
+  </data>
+  <data name="SingleMnemonicBackup" xml:space="preserve">
+    <value>Single recovery phrase (BIP39)</value>
+  </data>
+  <data name="MultiShareCount" xml:space="preserve">
+    <value>Total number of shares</value>
+  </data>
+  <data name="MultiShareThreshold" xml:space="preserve">
+    <value>Shares required for recovery</value>
+  </data>
+  <data name="InvalidMultiShareOptions" xml:space="preserve">
+    <value>Use 1 to 16 shares and a threshold no greater than the total. A threshold of 1 requires exactly 1 share.</value>
+  </data>
+  <data name="ShareProgress" xml:space="preserve">
+    <value>Share {0} of {1}</value>
+  </data>
+  <data name="MultiShareStoreSafely" xml:space="preserve">
+    <value>Write down every word in order and keep this share separately. These words are shown only during creation.</value>
+  </data>
+  <data name="MultiShareConfirm" xml:space="preserve">
+    <value>Enter this share from your written backup to confirm it.</value>
+  </data>
+  <data name="MultiSharePassphrase" xml:space="preserve">
+    <value>Enter the original SLIP39 passphrase. An empty passphrase is allowed. Each passphrase produces a different wallet. This passphrase also protects the wallet file.</value>
+  </data>
+  <data name="MultiSharePassphraseAscii" xml:space="preserve">
+    <value>SLIP39 passphrases may contain only printable ASCII characters.</value>
+  </data>
+  <data name="MultiShareEnter" xml:space="preserve">
+    <value>Enter one complete SLIP39 share per line.</value>
+  </data>
+  <data name="InvalidMultiShareSet" xml:space="preserve">
+    <value>Invalid or insufficient SLIP39 shares. Check the words, share groups and passphrase.</value>
+  </data>
 </root>
