@@ -111,6 +111,17 @@ public static class PasswordHelper
 
 	public static ExtKey GetMasterExtKey(KeyManager keyManager, string password, out string? compatibilityPassword)
 	{
+		compatibilityPassword = null;
+		if (keyManager.IsMultiShareBackup)
+		{
+			if (IsTooLong(password, out _))
+			{
+				throw new FormatException(PasswordTooLongMessage);
+			}
+			// SLIP39 passphrases are exact ASCII strings; spaces must not be trimmed
+			// and legacy clipboard compatibility candidates represent different wallets.
+			return keyManager.GetMasterExtKey(password);
+		}
 		password = Helpers.Guard.Correct(password); // Correct the password to ensure compatibility. User will be notified about this through TogglePasswordBox.
 
 		Guard(password);

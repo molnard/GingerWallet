@@ -193,7 +193,7 @@ public record Shamir
 		return decryptedSeed;
 	}
 
-	/// <summary>Selects a sufficient set while validating all supplied shares, including redundant shares.</summary>
+	/// <summary>Selects a sufficient set, validating metadata and all values in complete groups.</summary>
 	public static Share[] SelectRecoveryShares(Share[] shares)
 	{
 		ArgumentNullException.ThrowIfNull(shares);
@@ -203,12 +203,52 @@ public record Shamir
 			throw new ArgumentException("Duplicate shares or conflicting member thresholds.");
 		}
 		var complete = shares.GroupBy(s => s.GroupIndex).Where(g => g.Count() >= g.First().MemberThreshold)
-			.OrderBy(g => g.Key).Take(threshold).ToArray();
-		if (complete.Length != threshold)
+			.OrderBy(g => g.Key).ToArray();
+		if (complete.Length < threshold)
 		{
 			throw new ArgumentException("Not enough complete groups to recover this wallet.");
 		}
-		return complete.SelectMany(g => g.OrderBy(s => s.MemberIndex).Take(g.First().MemberThreshold)).ToArray();
+		var groupSecrets = new List<ShareData>();
+		try
+		{
+			foreach (var group in complete)
+			{
+				var members = group.OrderBy(s => s.MemberIndex).ToArray();
+				var selected = members.Take(members[0].MemberThreshold).Select(s => (s.MemberIndex, s.Value)).ToArray();
+				foreach (var extra in members.Skip(selected.Length))
+				{
+					ValidateRedundantShare(selected, (extra.MemberIndex, extra.Value));
+				}
+				var recovered = RecoverSecret(members[0].MemberThreshold, selected);
+				// Threshold-one recovery aliases the caller's share; only that value needs a copy.
+				groupSecrets.Add((group.Key, members[0].MemberThreshold == 1 ? recovered.ToArray() : recovered));
+			}
+			var selectedGroups = groupSecrets.Take(threshold).ToArray();
+			foreach (var extra in groupSecrets.Skip(threshold))
+			{
+				ValidateRedundantShare(selectedGroups, extra);
+			}
+			// Validate the group-level digest as well as every complete group's member digest.
+			CryptographicOperations.ZeroMemory(RecoverSecret(threshold, selectedGroups));
+			return complete.Take(threshold).SelectMany(g => g.OrderBy(s => s.MemberIndex).Take(g.First().MemberThreshold)).ToArray();
+		}
+		finally
+		{
+			foreach (var group in groupSecrets) { CryptographicOperations.ZeroMemory(group.value); }
+		}
+	}
+
+	private static void ValidateRedundantShare(ShareData[] selected, ShareData extra)
+	{
+		var expected = Interpolate(selected, extra.memberIndex);
+		try
+		{
+			if (!CryptographicOperations.FixedTimeEquals(expected, extra.value))
+			{
+				throw new ArgumentException("Inconsistent redundant SLIP39 share.");
+			}
+		}
+		finally { CryptographicOperations.ZeroMemory(expected); }
 	}
 
 	/// <summary>
@@ -230,6 +270,10 @@ public record Shamir
 		if (shares.Select(s => s.Extendable).Distinct().Count() != 1)
 		{
 			throw new ArgumentException("shares do not have the same extendable flag");
+		}
+		if (shares.Select(s => s.Value.Length).Distinct().Count() != 1)
+		{
+			throw new ArgumentException("shares must have equal value lengths");
 		}
 
 		// Ensure all shares belong to the same secret
