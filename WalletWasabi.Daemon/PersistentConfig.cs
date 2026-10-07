@@ -144,6 +144,9 @@ public record PersistentConfig : IConfigNg
 	[JsonPropertyName("ExchangeCurrency")]
 	public string ExchangeCurrency { get; init; } = new CultureInfo(GingerCultureInfo.DefaultLanguage).GuessPreferredCurrencyCode(ExchangeRateService.DefaultCurrencies);
 
+	[JsonPropertyName("ExchangeRatesEnabled")]
+	public bool ExchangeRatesEnabled { get; init; } = true;
+
 	[JsonPropertyName("GroupSeparator")]
 	[JsonConverter(typeof(GroupSeparatorJsonConverter))]
 	public string GroupSeparator { get; init; } = LocalizationExtension.GuessPreferredGroupSeparator();
@@ -198,6 +201,7 @@ public record PersistentConfig : IConfigNg
 			DecimalSeparator == other.DecimalSeparator &&
 			BtcFractionGroup.SequenceEqual(other.BtcFractionGroup) &&
 			ExchangeCurrency == other.ExchangeCurrency &&
+			ExchangeRatesEnabled == other.ExchangeRatesEnabled &&
 			FeeRateEstimationProvider == other.FeeRateEstimationProvider;
 	}
 
