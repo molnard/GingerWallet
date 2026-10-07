@@ -2215,4 +2215,46 @@
   <data name="SecretHuntSettingsEnable" xml:space="preserve">
     <value>A Titokvadászat használatának engedélyezése vagy letiltása ehhez a pénztárcához.</value>
   </data>
+  <data name="WalletBackupType" xml:space="preserve">
+    <value>A tárca biztonsági mentésének típusa</value>
+  </data>
+  <data name="MultiShareBackup" xml:space="preserve">
+    <value>Többrészes biztonsági mentés (SLIP39)</value>
+  </data>
+  <data name="MultiShareDescription" xml:space="preserve">
+    <value>A többrészes mentés részekre osztja a tárca titkát. Megadhatod, hány rész szükséges a helyreállításhoz. Minden részt külön, biztonságos helyen tárolj.</value>
+  </data>
+  <data name="SingleMnemonicBackup" xml:space="preserve">
+    <value>Egyetlen helyreállítási kifejezés (BIP39)</value>
+  </data>
+  <data name="MultiShareCount" xml:space="preserve">
+    <value>Részek teljes száma</value>
+  </data>
+  <data name="MultiShareThreshold" xml:space="preserve">
+    <value>Helyreállításhoz szükséges részek</value>
+  </data>
+  <data name="InvalidMultiShareOptions" xml:space="preserve">
+    <value>Használj 1–16 részt, legfeljebb a teljes darabszámnak megfelelő küszöbbel. Az 1-es küszöbhöz pontosan 1 rész szükséges.</value>
+  </data>
+  <data name="ShareProgress" xml:space="preserve">
+    <value>{0}. rész, összesen {1}</value>
+  </data>
+  <data name="MultiShareStoreSafely" xml:space="preserve">
+    <value>Írd le az összes szót sorrendben, és ezt a részt külön tárold. A szavak csak a létrehozás során jelennek meg.</value>
+  </data>
+  <data name="MultiShareConfirm" xml:space="preserve">
+    <value>A megerősítéshez írd be ezt a részt az írott biztonsági mentésből.</value>
+  </data>
+  <data name="MultiSharePassphrase" xml:space="preserve">
+    <value>Add meg az eredeti SLIP39 jelmondatot. Üres jelmondat is használható. Minden jelmondat másik tárcát eredményez. Ez a jelmondat a tárcafájlt is védi.</value>
+  </data>
+  <data name="MultiSharePassphraseAscii" xml:space="preserve">
+    <value>A SLIP39 jelmondatok csak nyomtatható ASCII karaktereket tartalmazhatnak.</value>
+  </data>
+  <data name="MultiShareEnter" xml:space="preserve">
+    <value>Soronként egy teljes SLIP39 részt adj meg.</value>
+  </data>
+  <data name="InvalidMultiShareSet" xml:space="preserve">
+    <value>Érvénytelen vagy elégtelen SLIP39 részek. Ellenőrizd a szavakat, a csoportokat és a jelmondatot.</value>
+  </data>
 </root>

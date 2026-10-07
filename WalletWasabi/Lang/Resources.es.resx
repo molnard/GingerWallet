@@ -2215,4 +2215,46 @@
   <data name="SecretHuntSettingsEnable" xml:space="preserve">
     <value>Activar o desactivar el uso de este monedero para la Caza de Secretos.</value>
   </data>
+  <data name="WalletBackupType" xml:space="preserve">
+    <value>Tipo de copia de seguridad de la cartera</value>
+  </data>
+  <data name="MultiShareBackup" xml:space="preserve">
+    <value>Copia de seguridad con varias partes (SLIP39)</value>
+  </data>
+  <data name="MultiShareDescription" xml:space="preserve">
+    <value>Una copia de seguridad con varias partes divide el secreto de la cartera. Eliges cuántas partes se necesitan para recuperarla. Guarda cada parte en un lugar seguro distinto.</value>
+  </data>
+  <data name="SingleMnemonicBackup" xml:space="preserve">
+    <value>Una frase de recuperación (BIP39)</value>
+  </data>
+  <data name="MultiShareCount" xml:space="preserve">
+    <value>Número total de partes</value>
+  </data>
+  <data name="MultiShareThreshold" xml:space="preserve">
+    <value>Partes necesarias para la recuperación</value>
+  </data>
+  <data name="InvalidMultiShareOptions" xml:space="preserve">
+    <value>Usa entre 1 y 16 partes y un umbral que no supere el total. Un umbral de 1 requiere exactamente 1 parte.</value>
+  </data>
+  <data name="ShareProgress" xml:space="preserve">
+    <value>Parte {0} de {1}</value>
+  </data>
+  <data name="MultiShareStoreSafely" xml:space="preserve">
+    <value>Escribe todas las palabras en orden y guarda esta parte por separado. Estas palabras solo se muestran durante la creación.</value>
+  </data>
+  <data name="MultiShareConfirm" xml:space="preserve">
+    <value>Introduce esta parte de tu copia escrita para confirmarla.</value>
+  </data>
+  <data name="MultiSharePassphrase" xml:space="preserve">
+    <value>Introduce la frase de contraseña SLIP39 original. Se permite una frase vacía. Cada frase de contraseña produce una cartera distinta. Esta frase también protege el archivo de la cartera.</value>
+  </data>
+  <data name="MultiSharePassphraseAscii" xml:space="preserve">
+    <value>Las frases de contraseña SLIP39 solo pueden contener caracteres ASCII imprimibles.</value>
+  </data>
+  <data name="MultiShareEnter" xml:space="preserve">
+    <value>Introduce una parte SLIP39 completa por línea.</value>
+  </data>
+  <data name="InvalidMultiShareSet" xml:space="preserve">
+    <value>Partes SLIP39 no válidas o insuficientes. Comprueba las palabras, los grupos de partes y la frase de contraseña.</value>
+  </data>
 </root>
