@@ -205,12 +205,13 @@ public sealed class P2pFilterSynchronizer : BackgroundService
 		else
 		{
 			var stored = await _store.IndexStore.FetchBatchAsync(start, hashes.Count, timeout.Token).ConfigureAwait(false);
-			for (int i = 0; i < stored.Length; i++)
+			for (int i = 0; i < hashes.Count; i++)
 			{
-				if (Hashes.DoubleSHA256(stored[i].Filter.ToBytes()) != hashes[i])
+				uint height = start + (uint)i;
+				if (i >= stored.Length || stored[i].Header.Height != height || stored[i].Header.BlockHash != _headers.GetBlock((int)height)?.HashBlock || Hashes.DoubleSHA256(stored[i].Filter.ToBytes()) != hashes[i])
 				{
-					Logger.LogWarning($"Replacing corrupt compact filter cache from height {stored[i].Header.Height}.");
-					await _store.IndexStore.RemoveAllNewerThanAsync(stored[i].Header.Height - 1).ConfigureAwait(false);
+					Logger.LogWarning($"Replacing corrupt compact filter cache from height {height}.");
+					await _store.IndexStore.RemoveAllNewerThanAsync(height - 1).ConfigureAwait(false);
 					ResetFilterHeaders();
 					return true;
 				}
@@ -309,7 +310,8 @@ public sealed class P2pFilterSynchronizer : BackgroundService
 
 	private sealed class FilterChainBehavior(ConcurrentChain chain) : ChainBehavior(chain)
 	{
-		public bool IsCaughtUp { get; private set; }
+		private volatile bool _isCaughtUp;
+		public bool IsCaughtUp => _isCaughtUp;
 
 		protected override void AttachCore()
 		{
@@ -327,7 +329,7 @@ public sealed class P2pFilterSynchronizer : BackgroundService
 		{
 			if (message.Message.Payload is HeadersPayload headers)
 			{
-				IsCaughtUp = headers.Headers.Count < 2000 && !InvalidHeaderReceived;
+				_isCaughtUp = headers.Headers.Count < 2000 && !InvalidHeaderReceived;
 			}
 		}
 
