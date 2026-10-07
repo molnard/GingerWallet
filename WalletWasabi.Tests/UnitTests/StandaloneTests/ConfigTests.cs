@@ -52,6 +52,19 @@ public class ConfigTests
 
 	public static string ReadAllTextAndNormalize(string configPath) => File.ReadAllText(configPath).ReplaceLineEndings("\n");
 
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void PeerFilterModePersistsAndCanBeOverridden(bool enabled)
+	{
+		var original = new PersistentConfig { UseP2pFilters = enabled };
+		var reloaded = JsonSerializer.Deserialize<PersistentConfig>(JsonSerializer.Serialize(original, ConfigManagerNg.DefaultOptions), ConfigManagerNg.DefaultOptions)!;
+		Assert.Equal(enabled, reloaded.UseP2pFilters);
+		Assert.True(original.DeepEquals(reloaded));
+		Assert.False(original.DeepEquals(original with { UseP2pFilters = !enabled }));
+		Assert.Equal(!enabled, new Config(original, [$"--usep2pfilters={!enabled}"]).UseP2pFilters);
+	}
+
 	[Fact]
 	public void ToFileAndLoadFileTest()
 	{
@@ -153,6 +166,7 @@ public class ConfigTests
 			  "TestNetCoordinatorUri": "https://api.gingerwallet.co/",
 			  "RegTestCoordinatorUri": "http://localhost:37127/",
 			  "UseTor": "Enabled",
+			  "UseP2pFilters": false,
 			  "TerminateTorOnExit": false,
 			  "TorBridges": [],
 			  "DownloadNewVersion": true,

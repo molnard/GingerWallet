@@ -726,7 +726,16 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 	#region BlockchainState
 
 	[JsonIgnore]
-	public uint? BirthHeight => BlockchainState.BirthHeight;
+	public uint? BirthHeight
+	{
+		get
+		{
+			lock (CriticalStateLock)
+			{
+				return BlockchainState.BirthHeight;
+			}
+		}
+	}
 
 	public Height GetBestHeight()
 	{
