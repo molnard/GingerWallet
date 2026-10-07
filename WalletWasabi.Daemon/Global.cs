@@ -69,7 +69,7 @@ public class Global
 		var networkWorkFolderPath = Path.Combine(DataDir, "BitcoinStore", Network.ToString());
 		AllTransactionStore = new AllTransactionStore(networkWorkFolderPath, Network);
 		SmartHeaderChain smartHeaderChain = new(maxChainSize: 20_000);
-		IndexStore = new IndexStore(Path.Combine(networkWorkFolderPath, "IndexStore"), Network, smartHeaderChain);
+		IndexStore = new IndexStore(Path.Combine(networkWorkFolderPath, "IndexStore"), Network, smartHeaderChain, config.UseP2pFilters);
 		var mempoolService = new MempoolService();
 		var blocks = new FileSystemBlockRepository(Path.Combine(networkWorkFolderPath, "Blocks"), Network, config.PersistentConfig.MaxBlockRepositorySize);
 
@@ -118,6 +118,11 @@ public class Global
 				return p2p;
 			},
 			friendlyName: "Bitcoin P2P Network");
+
+		if (config.UseP2pFilters)
+		{
+			HostedServices.Register<P2pFilterSynchronizer>(() => new P2pFilterSynchronizer(HostedServices.Get<P2pNetwork>(), BitcoinStore, networkWorkFolderPath, Network), "P2P compact filter synchronization");
+		}
 
 		HostedServices.Register<FeeRateProvider>(() => new FeeRateProvider(HttpClientFactory, Config.FeeRateEstimationProvider, Network), friendlyName: "FeeRateProvider");
 		var feeRateProvider = HostedServices.Get<FeeRateProvider>();

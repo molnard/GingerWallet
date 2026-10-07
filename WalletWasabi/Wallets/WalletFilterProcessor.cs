@@ -215,6 +215,10 @@ public class WalletFilterProcessor : BackgroundService
 
 	private async Task<bool> ProcessFilterModelAsync(FilterModel filter, CancellationToken cancel)
 	{
+		if (KeyManager.BirthHeight is { } birthday && filter.Header.Height <= birthday)
+		{
+			return false;
+		}
 		var height = new Height(filter.Header.Height);
 		var toTestKeys = GetScriptPubKeysToTest(height, filter.IsBip158);
 

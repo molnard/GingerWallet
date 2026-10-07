@@ -13,7 +13,7 @@ public static class StartingFilters
 		if (useBip158)
 		{
 			// A checkpoint anchors the chain; its filter is never scanned (scanning starts at height + 1).
-			return new FilterModel(startingHeader, new GolombRiceFilter([0], 19, 784931));
+			return Bip158Checkpoints.StartingFilter(network);
 		}
 		if (network == Network.Main)
 		{

@@ -9,6 +9,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using WalletWasabi.Blockchain.Analysis.Clustering;
+using WalletWasabi.Blockchain.BlockFilters;
 using WalletWasabi.Blockchain.TransactionOutputs;
 using WalletWasabi.Extensions;
 using WalletWasabi.Helpers;
@@ -252,7 +253,8 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 		var encryptedSecret = extKey.PrivateKey.GetEncryptedBitcoinSecret(password, Network.Main);
 
 		HDFingerprint masterFingerprint = extKey.Neuter().PubKey.GetHDFingerPrint();
-		BlockchainState blockchainState = new(network);
+		var birthday = Bip158Checkpoints.NewWalletBirthday(network);
+		BlockchainState blockchainState = new(network) { BirthHeight = birthday };
 		KeyPath segwitAccountKeyPath = GetAccountKeyPath(network, ScriptPubKeyType.Segwit);
 		ExtPubKey segwitExtPubKey = extKey.Derive(segwitAccountKeyPath).Neuter();
 
@@ -722,6 +724,8 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 	}
 
 	#region BlockchainState
+
+	public uint? BirthHeight => BlockchainState.BirthHeight;
 
 	public Height GetBestHeight()
 	{
