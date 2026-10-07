@@ -137,7 +137,6 @@ public partial class SendFeeViewModel : DialogViewModelBase<FeeRate?>
 		{
 			Logger.LogInfo(ex);
 			await FeeEstimationsAreNotAvailableAsync();
-			OnNext();
 			return;
 		}
 

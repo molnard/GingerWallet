@@ -143,6 +143,9 @@ public class Config
 			[nameof(ExchangeCurrency)] = (
 				"Exchange currency for BTC",
 				GetStringValue("ExchangeCurrency", PersistentConfig.ExchangeCurrency, cliArgs)),
+			[nameof(ExchangeRatesEnabled)] = (
+				"Enable external fiat exchange rate queries",
+				GetBoolValue("ExchangeRatesEnabled", PersistentConfig.ExchangeRatesEnabled, cliArgs)),
 			[nameof(DecimalSeparator)] = (
 				"Decimal separator for currencies",
 				GetStringValue("DecimalSeparator", PersistentConfig.DecimalSeparator, cliArgs)),
@@ -153,7 +156,7 @@ public class Config
 				"Grouping for Bitcoin fraction",
 				GetIntArrayValue("BtcFractionGroup", PersistentConfig.BtcFractionGroup, cliArgs)),
 			[nameof(FeeRateEstimationProvider)] = (
-				"The mining fee rate provider. Available providers are BlockstreamInfo and MempoolSpace",
+				"The mining fee rate provider. Available providers are BlockstreamInfo, MempoolSpace, FullNode and None (manual fees)",
 				GetFeeRateEstimationProviderValue("FeeRateEstimationProvider", PersistentConfig.FeeRateEstimationProvider, cliArgs))
 		};
 
@@ -211,6 +214,7 @@ public class Config
 	public LogMode[] LogModes => GetEffectiveValue<LogModeArrayValue, LogMode[]>(nameof(LogModes));
 	public int Language => GetEffectiveValue<IntValue, int>(nameof(Language));
 	public string ExchangeCurrency => GetEffectiveValue<StringValue, string>(nameof(ExchangeCurrency));
+	public bool ExchangeRatesEnabled => GetEffectiveValue<BoolValue, bool>(nameof(ExchangeRatesEnabled));
 	public string DecimalSeparator => GetEffectiveValue<StringValue, string>(nameof(DecimalSeparator));
 	public string GroupSeparator => GetEffectiveValue<StringValue, string>(nameof(GroupSeparator));
 	public int[] BtcFractionGroup => GetEffectiveValue<IntArrayValue, int[]>(nameof(BtcFractionGroup));

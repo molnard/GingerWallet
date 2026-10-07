@@ -2102,6 +2102,15 @@ namespace WalletWasabi.Lang {
                 return ResourceManager.GetString("ExchangeCurrency", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Enable fiat exchange rates.
+        /// </summary>
+        public static string EnableExchangeRates {
+            get {
+                return ResourceManager.GetString("EnableExchangeRates", resourceCulture);
+            }
+        }
         
         /// <summary>
         ///   Looks up a localized string similar to The chosen coins will be excluded from coinjoin. It&apos;s important to note that there will be no increase in the privacy of those coins..

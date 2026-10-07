@@ -19,6 +19,7 @@ namespace WalletWasabi.Daemon.FeeRateProviders;
 public class FeeRateProvider : BackgroundService, IWalletFeeRateProvider
 {
 	public const string FullNodeFeeEstimatesUnavailableMessage = "Full node fee estimates are unavailable because no full node RPC provider is active.";
+	public const string FeeEstimationDisabledMessage = "Automatic fee estimates are disabled. Enter a custom fee rate to send a transaction.";
 
 	private IFeeRateProvider? _feeRateProvider;
 
@@ -97,7 +98,11 @@ public class FeeRateProvider : BackgroundService, IWalletFeeRateProvider
 
 		try
 		{
-			if (_network == Network.RegTest)
+			if (Provider == FeeRateProviderSource.None)
+			{
+				_feeRateProvider = null;
+			}
+			else if (_network == Network.RegTest)
 			{
 				_feeRateProvider = new RegTestFeeRateProvider();
 				lock (_cacheLock)
@@ -160,6 +165,10 @@ public class FeeRateProvider : BackgroundService, IWalletFeeRateProvider
 	public AllFeeEstimate GetAllFeeEstimate()
 	{
 		ThrowIfDisposed();
+		if (Provider == FeeRateProviderSource.None)
+		{
+			throw new InvalidOperationException(FeeEstimationDisabledMessage);
+		}
 
 		if (_feeRateProvider is null)
 		{
@@ -277,9 +286,9 @@ public class FeeRateProvider : BackgroundService, IWalletFeeRateProvider
 			return;
 		}
 
-		if (IsFullNodeFeeProviderUnavailable())
+		if (Provider == FeeRateProviderSource.None || IsFullNodeFeeProviderUnavailable())
 		{
-			Logger.LogInfo($"{FullNodeFeeEstimatesUnavailableMessage} Fee rate refresh loop will not start.");
+			Logger.LogInfo($"{(Provider == FeeRateProviderSource.None ? FeeEstimationDisabledMessage : FullNodeFeeEstimatesUnavailableMessage)} Fee rate refresh loop will not start.");
 			return;
 		}
 

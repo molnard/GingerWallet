@@ -12,16 +12,18 @@ namespace WalletWasabi.Services;
 
 public class ExchangeRateService : PeriodicRunner
 {
-	public ExchangeRateService(TimeSpan period, WasabiHttpClientFactory httpClientFactory, string exchangeCurrency) : base(period)
+	public ExchangeRateService(TimeSpan period, WasabiHttpClientFactory httpClientFactory, string exchangeCurrency, bool enabled = true, ExchangeRateProvider? exchangeRateProvider = null) : base(period)
 	{
 		HttpClientFactory = httpClientFactory;
 		Currency = exchangeCurrency;
+		Enabled = enabled;
 
-		_exchangeRateProvider = new AggregatorExchangeRateProvider();
+		_exchangeRateProvider = exchangeRateProvider ?? new AggregatorExchangeRateProvider();
 		ExchangeRate = null;
 	}
 
 	public WasabiHttpClientFactory HttpClientFactory { get; }
+	public bool Enabled { get; }
 
 	public ImmutableSortedSet<string> SupportedCurrencies { get; private set; } = DefaultCurrencies;
 	public string Currency { get; private set; } = "USD";
@@ -37,11 +39,11 @@ public class ExchangeRateService : PeriodicRunner
 
 	public bool Active { get; set; } = true;
 
-	private AggregatorExchangeRateProvider _exchangeRateProvider;
+	private readonly ExchangeRateProvider _exchangeRateProvider;
 
 	protected override async Task ActionAsync(CancellationToken cancel)
 	{
-		if (Active)
+		if (Enabled && Active)
 		{
 			await RefreshAsync(TimeSpan.FromMinutes(2), cancel).ConfigureAwait(false);
 		}
@@ -49,6 +51,11 @@ public class ExchangeRateService : PeriodicRunner
 
 	public async Task RefreshAsync(TimeSpan refreshTime, CancellationToken cancel)
 	{
+		if (!Enabled)
+		{
+			return;
+		}
+
 		try
 		{
 			var exchangeCurrency = Currency;

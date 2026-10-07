@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using NBitcoin;
 using WalletWasabi.Blockchain.Analysis.FeesEstimation;
 using WalletWasabi.Blockchain.Transactions;
+using WalletWasabi.Daemon.FeeRateProviders;
 using WalletWasabi.Fluent.HomeScreen.Send.Models;
 using WalletWasabi.Fluent.HomeScreen.Send.ViewModels;
 using WalletWasabi.Helpers;
@@ -72,6 +73,12 @@ public static class TransactionFeeHelper
 
 	public static bool TryGetFeeEstimates(IWalletFeeRateProvider feeProvider, Network network, [NotNullWhen(true)] out AllFeeEstimate? estimates)
 	{
+		if (feeProvider is FeeRateProvider { Provider: FeeRateProviderSource.None })
+		{
+			estimates = null;
+			return false;
+		}
+
 		if (network == Network.TestNet)
 		{
 			estimates = TestNetFeeEstimates;
@@ -94,6 +101,11 @@ public static class TransactionFeeHelper
 
 	public static AllFeeEstimate GetFeeEstimates(IWalletFeeRateProvider feeProvider, Network network)
 	{
+		if (feeProvider is FeeRateProvider { Provider: FeeRateProviderSource.None })
+		{
+			throw new InvalidOperationException(FeeRateProvider.FeeEstimationDisabledMessage);
+		}
+
 		if (network == Network.TestNet || network == Network.RegTest)
 		{
 			return TestNetFeeEstimates;
@@ -168,7 +180,7 @@ public static class TransactionFeeHelper
 	{
 		if (!TryGetFeeEstimates(wallet, out var feeEstimates))
 		{
-			return false;
+			return feeRate >= Constants.MinRelayFeeRate;
 		}
 
 		var feeChartViewModel = new FeeChartViewModel();

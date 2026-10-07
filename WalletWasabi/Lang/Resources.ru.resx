@@ -2217,4 +2217,7 @@
   <data name="SecretHuntSettingsEnable" xml:space="preserve">
     <value>Включить/выключить использование этого кошелька для охоты за секретами.</value>
   </data>
+  <data name="EnableExchangeRates" xml:space="preserve">
+    <value>Включить курсы фиатных валют</value>
+  </data>
 </root>
