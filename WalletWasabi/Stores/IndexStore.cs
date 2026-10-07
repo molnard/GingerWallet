@@ -19,15 +19,16 @@ namespace WalletWasabi.Stores;
 /// </summary>
 public class IndexStore : IIndexStore, IAsyncDisposable
 {
-	public IndexStore(string workFolderPath, Network network, SmartHeaderChain smartHeaderChain)
+	public IndexStore(string workFolderPath, Network network, SmartHeaderChain smartHeaderChain, bool useBip158 = false)
 	{
 		SmartHeaderChain = smartHeaderChain;
 		Network = network;
+		UseBip158 = useBip158;
 
 		workFolderPath = Guard.NotNullOrEmptyOrWhitespace(nameof(workFolderPath), workFolderPath, trim: true);
 		IoHelpers.EnsureDirectoryExists(workFolderPath);
 
-		IndexFilePath = Path.Combine(workFolderPath, "IndexStore.sqlite");
+		IndexFilePath = Path.Combine(workFolderPath, useBip158 ? "IndexStore.Bip158.sqlite" : "IndexStore.sqlite");
 
 		if (network == Network.RegTest)
 		{
@@ -41,7 +42,7 @@ public class IndexStore : IIndexStore, IAsyncDisposable
 	{
 		try
 		{
-			return BlockFilterSqliteStorage.FromFile(dataSource: IndexFilePath, startingFilter: StartingFilters.GetStartingFilter(Network));
+			return BlockFilterSqliteStorage.FromFile(dataSource: IndexFilePath, startingFilter: StartingFilters.GetStartingFilter(Network, UseBip158), useBip158: UseBip158);
 		}
 		catch (SqliteException ex) when (ex.SqliteExtendedErrorCode == 11) // 11 ~ SQLITE_CORRUPT error code
 		{
@@ -60,6 +61,7 @@ public class IndexStore : IIndexStore, IAsyncDisposable
 
 	/// <summary>NBitcoin network.</summary>
 	private Network Network { get; }
+	public bool UseBip158 { get; }
 
 	private SmartHeaderChain SmartHeaderChain { get; }
 

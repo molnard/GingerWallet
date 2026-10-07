@@ -17,13 +17,15 @@ public class BlockFilterSqliteStorage : IDisposable
 {
 	private bool _disposedValue;
 
-	private BlockFilterSqliteStorage(SqliteConnection connection)
+	private BlockFilterSqliteStorage(SqliteConnection connection, bool useBip158)
 	{
 		Connection = connection;
+		UseBip158 = useBip158;
 	}
 
 	/// <remarks>Connection cannot be accessed from multiple threads at the same time.</remarks>
 	private SqliteConnection Connection { get; }
+	private bool UseBip158 { get; }
 
 	/// <summary>
 	/// Opens a new SQLite connection to the given database file.
@@ -32,7 +34,7 @@ public class BlockFilterSqliteStorage : IDisposable
 	/// <param name="startingFilter">Starting filter to put into the filter table if the table needs to be created.</param>
 	/// <exception cref="InvalidOperationException">If there is an unrecoverable error.</exception>
 	/// <seealso href="https://dev.to/lefebvre/speed-up-sqlite-with-write-ahead-logging-wal-do">Write-ahead logging explained.</seealso>
-	public static BlockFilterSqliteStorage FromFile(string dataSource, FilterModel? startingFilter = null)
+	public static BlockFilterSqliteStorage FromFile(string dataSource, FilterModel? startingFilter = null, bool useBip158 = false)
 	{
 		// In case there is an exception, we need to dispose things properly.
 		SqliteConnection? connectionToDispose = null;
@@ -72,7 +74,7 @@ public class BlockFilterSqliteStorage : IDisposable
 				walCommand.ExecuteNonQuery();
 			}
 
-			BlockFilterSqliteStorage storage = new(connection);
+			BlockFilterSqliteStorage storage = new(connection, useBip158);
 			storageToDispose = storage;
 			connectionToDispose = null;
 
@@ -205,7 +207,7 @@ public class BlockFilterSqliteStorage : IDisposable
 		uint256 prevBlockHash = new(reader.GetFieldValue<byte[]>(ordinal: 3));
 		long blockTime = reader.GetInt64(ordinal: 4);
 
-		return FilterModel.Create(blockHeight, blockHash, filterData, prevBlockHash, blockTime);
+		return FilterModel.Create(blockHeight, blockHash, filterData, prevBlockHash, blockTime, UseBip158);
 	}
 
 	/// <summary>

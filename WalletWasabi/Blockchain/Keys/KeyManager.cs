@@ -463,11 +463,11 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 	/// </summary>
 	public record ScriptPubKeySpendingInfo(byte[] CompressedScriptPubKey, Height? LatestSpendingHeight);
 
-	public IEnumerable<ScriptPubKeySpendingInfo> UnsafeGetSynchronizationInfos()
+	public IEnumerable<ScriptPubKeySpendingInfo> UnsafeGetSynchronizationInfos(bool useBip158 = false)
 	{
 		lock (CriticalStateLock)
 		{
-			return HdPubKeyCache.Select(x => new ScriptPubKeySpendingInfo(x.CompressedScriptPubKey, x.HdPubKey.LatestSpendingHeight));
+			return HdPubKeyCache.Select(x => new ScriptPubKeySpendingInfo(useBip158 ? x.ScriptPubKey.ToBytes() : x.CompressedScriptPubKey, x.HdPubKey.LatestSpendingHeight));
 		}
 	}
 
