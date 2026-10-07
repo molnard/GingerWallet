@@ -26,6 +26,9 @@ public class P2pNetwork : BackgroundService
 		Network = network;
 		FullNodeP2PEndPoint = fullNodeP2pEndPoint;
 		BitcoinStore = bitcoinStore;
+		var requirements = bitcoinStore.IndexStore.UseBip158
+			? new NodeRequirement { RequiredServices = NodeServices.NODE_WITNESS | NodeServices.NODE_COMPACT_FILTERS, MinVersion = Constants.NodeRequirements.MinVersion, MinProtocolCapabilities = Constants.NodeRequirements.MinProtocolCapabilities }
+			: Constants.NodeRequirements;
 		AddressManagerFilePath = Path.Combine(workDir, $"AddressManager{Network}.dat");
 
 		if (Network == Network.RegTest)
@@ -33,7 +36,7 @@ public class P2pNetwork : BackgroundService
 			AddressManager = new AddressManager();
 			Logger.LogInfo($"Fake {nameof(AddressManager)} is initialized on the {Network.RegTest}.");
 
-			Nodes = new NodesGroup(Network, requirements: Constants.NodeRequirements);
+			Nodes = new NodesGroup(Network, requirements: requirements);
 		}
 		else
 		{
@@ -95,7 +98,7 @@ public class P2pNetwork : BackgroundService
 			{
 				connectionParameters.TemplateBehaviors.Add(new SocksSettingsBehavior(torSocks5EndPoint, onlyForOnionHosts: false, networkCredential: null, streamIsolation: true));
 			}
-			var nodes = new NodesGroup(Network, connectionParameters, requirements: Constants.NodeRequirements);
+			var nodes = new NodesGroup(Network, connectionParameters, requirements: requirements);
 			nodes.ConnectedNodes.Added += ConnectedNodes_OnAddedOrRemoved;
 			nodes.ConnectedNodes.Removed += ConnectedNodes_OnAddedOrRemoved;
 			nodes.MaximumNodeConnection = MaximumNodeConnections;
@@ -120,6 +123,15 @@ public class P2pNetwork : BackgroundService
 			try
 			{
 				Node node = await Node.ConnectAsync(Network.RegTest, FullNodeP2PEndPoint).ConfigureAwait(false);
+
+				if (BitcoinStore.IndexStore.UseBip158)
+				{
+					foreach (var behavior in Nodes.NodeConnectionParameters.TemplateBehaviors)
+					{
+						node.Behaviors.Add((NodeBehavior)behavior.Clone());
+					}
+					node.VersionHandshake(stoppingToken);
+				}
 
 				Nodes.ConnectedNodes.Add(node);
 

@@ -199,7 +199,7 @@ public class WalletFilterProcessor : BackgroundService
 	/// </summary>
 	/// <param name="filterHeight">Height of the filter that needs to be tested.</param>
 	/// <returns>Keys to test against this filter.</returns>
-	private List<byte[]> GetScriptPubKeysToTest(Height filterHeight)
+	private List<byte[]> GetScriptPubKeysToTest(Height filterHeight, bool useBip158)
 	{
 		bool ScriptAlreadySpent(KeyManager.ScriptPubKeySpendingInfo spendingInfo) =>
 			spendingInfo.LatestSpendingHeight is { } spendingHeight && spendingHeight < filterHeight;
@@ -207,7 +207,7 @@ public class WalletFilterProcessor : BackgroundService
 		bool ScriptNotSpentAtTheMoment(KeyManager.ScriptPubKeySpendingInfo spendingInfo) =>
 			!ScriptAlreadySpent(spendingInfo);
 
-		var scriptsSpendingInfo = KeyManager.UnsafeGetSynchronizationInfos();
+		var scriptsSpendingInfo = KeyManager.UnsafeGetSynchronizationInfos(useBip158);
 		var scriptPubKeyAccordingSyncType = scriptsSpendingInfo;
 
 		return scriptPubKeyAccordingSyncType.Select(x => x.CompressedScriptPubKey).ToList();
@@ -215,8 +215,12 @@ public class WalletFilterProcessor : BackgroundService
 
 	private async Task<bool> ProcessFilterModelAsync(FilterModel filter, CancellationToken cancel)
 	{
+		if (KeyManager.BirthHeight is { } birthday && filter.Header.Height <= birthday)
+		{
+			return false;
+		}
 		var height = new Height(filter.Header.Height);
-		var toTestKeys = GetScriptPubKeysToTest(height);
+		var toTestKeys = GetScriptPubKeysToTest(height, filter.IsBip158);
 
 		var matchFound = false;
 		if (toTestKeys.Any())

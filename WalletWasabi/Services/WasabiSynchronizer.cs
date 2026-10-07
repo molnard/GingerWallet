@@ -27,6 +27,7 @@ public class WasabiSynchronizer : PeriodicRunner, INotifyPropertyChanged, IWasab
 	public WasabiSynchronizer(TimeSpan period, int maxFiltersToSync, BitcoinStore bitcoinStore, WasabiHttpClientFactory httpClientFactory) : base(period)
 	{
 		MaxFiltersToSync = maxFiltersToSync;
+		UseP2pFilters = bitcoinStore.IndexStore.UseBip158;
 
 		LastResponse = null;
 		SmartHeaderChain = bitcoinStore.SmartHeaderChain;
@@ -71,6 +72,7 @@ public class WasabiSynchronizer : PeriodicRunner, INotifyPropertyChanged, IWasab
 	private DateTimeOffset BackendStatusChangedAt { get; set; } = DateTimeOffset.UtcNow;
 	public TimeSpan BackendStatusChangedSince => DateTimeOffset.UtcNow - BackendStatusChangedAt;
 	private int MaxFiltersToSync { get; }
+	private bool UseP2pFilters { get; }
 	private SmartHeaderChain SmartHeaderChain { get; }
 	private FilterProcessor FilterProcessor { get; }
 
@@ -135,12 +137,15 @@ public class WasabiSynchronizer : PeriodicRunner, INotifyPropertyChanged, IWasab
 			}
 
 			// If it's not fully synced or reorg happened.
-			if (response.Filters.Count() == MaxFiltersToSync || response.FiltersResponseState == FiltersResponseState.BestKnownHashNotFound)
+			if (!UseP2pFilters && (response.Filters.Count() == MaxFiltersToSync || response.FiltersResponseState == FiltersResponseState.BestKnownHashNotFound))
 			{
 				TriggerRound();
 			}
 
-			await FilterProcessor.ProcessAsync((uint)response.BestHeight, response.FiltersResponseState, response.Filters).ConfigureAwait(false);
+			if (!UseP2pFilters)
+			{
+				await FilterProcessor.ProcessAsync((uint)response.BestHeight, response.FiltersResponseState, response.Filters).ConfigureAwait(false);
+			}
 
 			LastResponse = response;
 			ResponseArrived?.Invoke(this, response);

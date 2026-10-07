@@ -16,11 +16,11 @@ public class FilterModel
 		FilterData = filter.ToBytes();
 	}
 
-	private FilterModel(SmartHeader header, byte[] filterData)
+	private FilterModel(SmartHeader header, byte[] filterData, bool useBip158 = false)
 	{
 		Header = header;
 		FilterData = filterData;
-		_filter = new(() => new GolombRiceFilter(filterData, 20, 1 << 20), LazyThreadSafetyMode.ExecutionAndPublication);
+		_filter = new(() => useBip158 ? new GolombRiceFilter(filterData, 19, 784931) : new GolombRiceFilter(filterData, 20, 1 << 20), LazyThreadSafetyMode.ExecutionAndPublication);
 	}
 
 	public SmartHeader Header { get; }
@@ -28,14 +28,16 @@ public class FilterModel
 	public byte[] FilterData { get; }
 	public GolombRiceFilter Filter => _filter.Value;
 
+	public bool IsBip158 => Filter.P == 19 && Filter.M == 784931;
+
 	// https://github.com/bitcoin/bips/blob/master/bip-0158.mediawiki
 	// The parameter k MUST be set to the first 16 bytes of the hash of the block for which the filter
 	// is constructed.This ensures the key is deterministic while still varying from block to block.
 	public byte[] FilterKey => Header.BlockHash.ToBytes()[..16];
 
-	public static FilterModel Create(uint blockHeight, uint256 blockHash, byte[] filterData, uint256 prevBlockHash, long blockTime)
+	public static FilterModel Create(uint blockHeight, uint256 blockHash, byte[] filterData, uint256 prevBlockHash, long blockTime, bool useBip158 = false)
 	{
-		return new FilterModel(new SmartHeader(blockHash, prevBlockHash, blockHeight, blockTime), filterData);
+		return new FilterModel(new SmartHeader(blockHash, prevBlockHash, blockHeight, blockTime), filterData, useBip158);
 	}
 
 	public static FilterModel FromLine(string line)
