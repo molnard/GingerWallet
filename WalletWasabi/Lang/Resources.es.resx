@@ -2215,4 +2215,7 @@
   <data name="SecretHuntSettingsEnable" xml:space="preserve">
     <value>Activar o desactivar el uso de este monedero para la Caza de Secretos.</value>
   </data>
+  <data name="EnableExchangeRates" xml:space="preserve">
+    <value>Activar tipos de cambio de monedas fiduciarias</value>
+  </data>
 </root>
