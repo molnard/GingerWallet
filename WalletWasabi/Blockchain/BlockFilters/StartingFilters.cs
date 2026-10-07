@@ -7,9 +7,14 @@ namespace WalletWasabi.Blockchain.BlockFilters;
 
 public static class StartingFilters
 {
-	public static FilterModel GetStartingFilter(Network network)
+	public static FilterModel GetStartingFilter(Network network, bool useBip158 = false)
 	{
 		var startingHeader = SmartHeader.GetStartingHeader(network, IndexType.SegwitTaproot);
+		if (useBip158)
+		{
+			// A checkpoint anchors the chain; its filter is never scanned (scanning starts at height + 1).
+			return new FilterModel(startingHeader, new GolombRiceFilter([0], 19, 784931));
+		}
 		if (network == Network.Main)
 		{
 			return FilterModel.FromLine($"{startingHeader.Height}:{startingHeader.BlockHash}:02832810ec08a0:{startingHeader.PrevHash}:{startingHeader.EpochBlockTime}");
