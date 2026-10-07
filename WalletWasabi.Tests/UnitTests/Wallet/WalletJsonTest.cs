@@ -18,6 +18,8 @@ public class WalletJsonTest
 
 		string password = "topsecret1234";
 		var keyManager = KeyManager.CreateNew(mnemonic, password, Network.Main);
+		// The existing-wallet fixture must remain byte-for-byte compatible when no birthday is present.
+		keyManager.SetResyncParameters(new WalletWasabi.Models.Height(0), keyManager.MinGapLimit);
 		keyManager.GetNextReceiveKey(new LabelsArray(["Alice", "Bob"]));
 		keyManager.BuySellWalletData.Orders = [SampleOrder];
 		keyManager.ExcludedCoinsFromCoinJoin.Add(new OutPoint(new uint256(random.GetBytes(32)), 27));

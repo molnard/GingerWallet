@@ -47,8 +47,11 @@ public static class Bip158Checkpoints
 		return [new(0, network.GenesisHash, filter.GetHeader(uint256.Zero), genesis.Header.BlockTime.ToUnixTimeSeconds())];
 	}
 
-	public static uint NewWalletBirthday(Network network) => ForNetwork(network)
-		.Last(x => x.BlockTime <= DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds()).Height;
+	public static uint NewWalletBirthday(Network network)
+	{
+		var checkpoints = ForNetwork(network);
+		return checkpoints.LastOrDefault(x => x.BlockTime <= DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds(), checkpoints[0]).Height;
+	}
 
 	public static FilterModel StartingFilter(Network network)
 	{
