@@ -119,7 +119,7 @@ public class WalletRepository : ReactiveObject
 		ArgumentException.ThrowIfNullOrEmpty(walletName);
 		ArgumentNullException.ThrowIfNull(password);
 
-		var (keyManager, _) = await Task.Run(() =>
+		var keyManager = await Task.Run(() =>
 		{
 			var walletGenerator = new WalletGenerator(
 				Services.WalletManager.WalletDirectories.WalletsDir,
@@ -127,7 +127,15 @@ public class WalletRepository : ReactiveObject
 			{
 				TipHeight = Services.SmartHeaderChain.TipHeight
 			};
-			return walletGenerator.GenerateWallet(walletName, password, mnemonic);
+			if (options.Shares is { } shares)
+			{
+				var result = KeyManager.RecoverMultiShare(shares, password, Services.WalletManager.Network);
+				result.AutoCoinJoin = true;
+				result.SetBestHeights(new Height(walletGenerator.TipHeight));
+				result.SetFilePath(WalletGenerator.GetWalletFilePath(walletName, walletGenerator.WalletsDir));
+				return result;
+			}
+			return walletGenerator.GenerateWallet(walletName, password, mnemonic).Item1;
 		});
 
 		return new WalletSettingsModel(keyManager, true);
@@ -167,15 +175,20 @@ public class WalletRepository : ReactiveObject
 
 		ArgumentException.ThrowIfNullOrEmpty(walletName);
 		ArgumentNullException.ThrowIfNull(password);
-		ArgumentNullException.ThrowIfNull(mnemonic);
+		if (mnemonic is null && options.Shares is null)
+		{
+			throw new ArgumentException("Wallet recovery requires a mnemonic or SLIP39 shares.");
+		}
 		ArgumentNullException.ThrowIfNull(minGapLimit);
 
 		var keyManager = await Task.Run(() =>
 		{
 			var walletFilePath = Services.WalletManager.WalletDirectories.GetWalletFilePaths(walletName).walletFilePath;
 
-			var result = KeyManager.Recover(
-				mnemonic,
+			var result = options.Shares is { } shares
+				? KeyManager.RecoverMultiShare(shares, password, Services.WalletManager.Network, AccountKeyPath, minGapLimit: minGapLimit.Value)
+				: KeyManager.Recover(
+				mnemonic!,
 				password,
 				Services.WalletManager.Network,
 				AccountKeyPath,

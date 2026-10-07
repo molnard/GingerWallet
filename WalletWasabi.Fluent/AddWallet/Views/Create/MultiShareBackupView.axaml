@@ -1,0 +1,16 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:lang="using:WalletWasabi.Lang" xmlns:create="using:WalletWasabi.Fluent.AddWallet.ViewModels.Create"
+             x:Class="WalletWasabi.Fluent.AddWallet.Views.Create.MultiShareBackupView"
+             x:DataType="create:MultiShareBackupViewModel" x:CompileBindings="True">
+  <ContentArea Title="{Binding Title}" EnableNext="True" EnableBack="{Binding EnableBack}" EnableCancel="{Binding EnableCancel}" IsBusy="{Binding IsBusy}">
+    <StackPanel Spacing="20" HorizontalAlignment="Center" MaxWidth="550">
+      <TextBlock Text="{Binding ShareProgress}" FontWeight="SemiBold" />
+      <TextBlock Text="{x:Static lang:Resources.MultiShareStoreSafely}" TextWrapping="Wrap" />
+      <TextBlock Text="{Binding CurrentShareWords}" TextWrapping="Wrap" FontSize="20" IsVisible="{Binding !IsConfirming}" />
+      <StackPanel IsVisible="{Binding IsConfirming}" Spacing="12">
+        <Label Content="{x:Static lang:Resources.MultiShareConfirm}" Target="ConfirmationBox" />
+        <TextBox Name="ConfirmationBox" Text="{Binding Confirmation}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="120" />
+      </StackPanel>
+    </StackPanel>
+  </ContentArea>
+</UserControl>
