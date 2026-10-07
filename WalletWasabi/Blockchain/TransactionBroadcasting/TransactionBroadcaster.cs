@@ -164,11 +164,10 @@ public class TransactionBroadcaster
 				throw new InvalidOperationException("We are not connected to enough nodes.");
 			}
 
-			var relayNodes = Nodes.ConnectedNodes.Where(x => x.IsConnected).ToArray();
-			if (transaction.TryGetFeeRate(out var feeRate))
-			{
-				relayNodes = relayNodes.Where(x => feeRate >= (x.Behaviors.OfType<P2pBehavior>().FirstOrDefault()?.FeeFilter ?? new FeeRate(1m))).ToArray();
-			}
+			transaction.TryGetFeeRate(out var feeRate);
+			var relayNodes = Nodes.ConnectedNodes.Where(x => CanRelayTransaction(
+				x.State, x.PeerVersion?.Relay == true,
+				x.Behaviors.OfType<P2pBehavior>().FirstOrDefault()?.FeeFilter, feeRate)).ToArray();
 			// The serving peer disconnects; two other eligible peers must remain to confirm propagation.
 			if (relayNodes.Length < 3 || relayNodes.RandomElement(Random) is not { } node)
 			{
@@ -201,6 +200,9 @@ public class TransactionBroadcaster
 			}
 		}
 	}
+
+	internal static bool CanRelayTransaction(NodeState state, bool relay, FeeRate? peerFeeFilter, FeeRate? feeRate) =>
+		state == NodeState.HandShaked && relay && (feeRate is null || feeRate >= (peerFeeFilter ?? new FeeRate(1m)));
 
 	private async Task BroadcastTransactionWithRpcAsync(SmartTransaction transaction)
 	{
