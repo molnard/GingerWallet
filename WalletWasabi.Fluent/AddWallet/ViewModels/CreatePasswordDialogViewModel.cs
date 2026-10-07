@@ -12,9 +12,11 @@ public partial class CreatePasswordDialogViewModel : DialogViewModelBase<string?
 {
 	[AutoNotify] private string? _confirmPassword;
 	[AutoNotify] private string? _password;
+	private readonly bool _allowWhitespace;
 
-	public CreatePasswordDialogViewModel(string title, string caption = "", bool enableEmpty = true)
+	public CreatePasswordDialogViewModel(string title, string caption = "", bool enableEmpty = true, bool allowWhitespace = false)
 	{
+		_allowWhitespace = allowWhitespace;
 		Title = title;
 		Caption = caption;
 
@@ -71,7 +73,7 @@ public partial class CreatePasswordDialogViewModel : DialogViewModelBase<string?
 
 	private void ValidatePassword(IValidationErrors errors)
 	{
-		if (PasswordHelper.IsTrimmable(Password, out _))
+		if (!_allowWhitespace && PasswordHelper.IsTrimmable(Password, out _))
 		{
 			errors.Add(ErrorSeverity.Error, PasswordHelper.WhitespaceMessage);
 		}

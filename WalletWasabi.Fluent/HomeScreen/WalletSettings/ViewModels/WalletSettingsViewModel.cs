@@ -9,6 +9,7 @@ using WalletWasabi.Fluent.Models;
 using WalletWasabi.Fluent.Models.Wallets;
 using WalletWasabi.Fluent.Navigation.ViewModels;
 using WalletWasabi.Lang;
+using WalletWasabi.Fluent.AddWallet.Models;
 
 namespace WalletWasabi.Fluent.HomeScreen.WalletSettings.ViewModels;
 
@@ -43,7 +44,17 @@ public partial class WalletSettingsViewModel : RoutableViewModel
 
 		NextCommand = CancelCommand;
 
-		VerifyRecoveryWordsCommand = ReactiveCommand.Create(() => UiContext.Navigate().To().WalletVerifyRecoveryWords(walletModel));
+		VerifyRecoveryWordsCommand = ReactiveCommand.Create(() =>
+		{
+			if (walletModel.Wallet.KeyManager.IsMultiShareBackup)
+			{
+				UiContext.Navigate().To().RecoverMultiShareWallet(new WalletCreationOptions.RecoverWallet(), walletModel);
+			}
+			else
+			{
+				UiContext.Navigate().To().WalletVerifyRecoveryWords(walletModel);
+			}
+		});
 
 		this.WhenAnyValue(x => x.PreferPsbtWorkflow)
 			.Skip(1)

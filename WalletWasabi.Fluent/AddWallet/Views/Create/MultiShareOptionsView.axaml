@@ -1,0 +1,14 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:lang="using:WalletWasabi.Lang" xmlns:create="using:WalletWasabi.Fluent.AddWallet.ViewModels.Create"
+             x:Class="WalletWasabi.Fluent.AddWallet.Views.Create.MultiShareOptionsView"
+             x:DataType="create:MultiShareOptionsViewModel" x:CompileBindings="True">
+  <ContentArea Title="{Binding Title}" EnableNext="True" EnableBack="{Binding EnableBack}" EnableCancel="{Binding EnableCancel}" IsBusy="{Binding IsBusy}">
+    <StackPanel Spacing="20" HorizontalAlignment="Center" MaxWidth="500">
+      <TextBlock Text="{x:Static lang:Resources.MultiShareDescription}" TextWrapping="Wrap" />
+      <Label Content="{x:Static lang:Resources.MultiShareCount}" Target="ShareCountBox" />
+      <TextBox Name="ShareCountBox" Text="{Binding ShareCount}" />
+      <Label Content="{x:Static lang:Resources.MultiShareThreshold}" Target="ThresholdBox" />
+      <TextBox Name="ThresholdBox" Text="{Binding Threshold}" />
+    </StackPanel>
+  </ContentArea>
+</UserControl>

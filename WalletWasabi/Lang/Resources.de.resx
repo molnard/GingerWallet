@@ -2215,4 +2215,46 @@
   <data name="SecretHuntSettingsEnable" xml:space="preserve">
     <value>Aktiviere oder deaktiviere die Nutzung dieser Wallet für die Geheimnisjagd.</value>
   </data>
+  <data name="WalletBackupType" xml:space="preserve">
+    <value>Art der Wallet-Sicherung</value>
+  </data>
+  <data name="MultiShareBackup" xml:space="preserve">
+    <value>Sicherung mit mehreren Anteilen (SLIP39)</value>
+  </data>
+  <data name="MultiShareDescription" xml:space="preserve">
+    <value>Eine Sicherung mit mehreren Anteilen teilt das Wallet-Geheimnis auf. Du bestimmst, wie viele Anteile zur Wiederherstellung benötigt werden. Bewahre jeden Anteil an einem separaten sicheren Ort auf.</value>
+  </data>
+  <data name="SingleMnemonicBackup" xml:space="preserve">
+    <value>Eine Wiederherstellungsphrase (BIP39)</value>
+  </data>
+  <data name="MultiShareCount" xml:space="preserve">
+    <value>Gesamtzahl der Anteile</value>
+  </data>
+  <data name="MultiShareThreshold" xml:space="preserve">
+    <value>Zur Wiederherstellung benötigte Anteile</value>
+  </data>
+  <data name="InvalidMultiShareOptions" xml:space="preserve">
+    <value>Verwende 1 bis 16 Anteile und einen Schwellenwert höchstens gleich der Gesamtzahl. Ein Schwellenwert von 1 erfordert genau 1 Anteil.</value>
+  </data>
+  <data name="ShareProgress" xml:space="preserve">
+    <value>Anteil {0} von {1}</value>
+  </data>
+  <data name="MultiShareStoreSafely" xml:space="preserve">
+    <value>Schreibe alle Wörter in der richtigen Reihenfolge auf und bewahre diesen Anteil separat auf. Diese Wörter werden nur bei der Erstellung angezeigt.</value>
+  </data>
+  <data name="MultiShareConfirm" xml:space="preserve">
+    <value>Gib diesen Anteil aus deiner schriftlichen Sicherung zur Bestätigung ein.</value>
+  </data>
+  <data name="MultiSharePassphrase" xml:space="preserve">
+    <value>Gib die ursprüngliche SLIP39-Passphrase ein. Eine leere Passphrase ist erlaubt. Jede Passphrase erzeugt eine andere Wallet. Diese Passphrase schützt auch die Wallet-Datei.</value>
+  </data>
+  <data name="MultiSharePassphraseAscii" xml:space="preserve">
+    <value>SLIP39-Passphrasen dürfen nur druckbare ASCII-Zeichen enthalten.</value>
+  </data>
+  <data name="MultiShareEnter" xml:space="preserve">
+    <value>Gib einen vollständigen SLIP39-Anteil pro Zeile ein.</value>
+  </data>
+  <data name="InvalidMultiShareSet" xml:space="preserve">
+    <value>Ungültige oder unzureichende SLIP39-Anteile. Prüfe die Wörter, Anteilsgruppen und Passphrase.</value>
+  </data>
 </root>
