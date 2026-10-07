@@ -1,10 +1,13 @@
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using NBitcoin;
 using WalletWasabi.Tests.Helpers;
 using WalletWasabi.WabiSabi.Client;
 using WalletWasabi.WabiSabi.Client.CoinJoin.Client;
 using WalletWasabi.WabiSabi.Client.CoinJoin.Client.Decomposer;
+using WalletWasabi.WabiSabi.Models.MultipartyTransaction;
+using WalletWasabi.Extensions;
 using Xunit;
 
 namespace WalletWasabi.Tests.UnitTests.WabiSabi.Client;
@@ -52,6 +55,47 @@ public class CoinJoinClientTests
 		Assert.False(CoinJoinClient.SanityCheck(
 			new[] { output2, output3 },
 			new[] { output1, AddOneSat(output2), SubOneSat(output3), output4 }));
+	}
+
+	[Theory]
+	[InlineData(6, 2, false, 1.00, true)]
+	[InlineData(5, 2, false, 1.00, false)]
+	[InlineData(6, 6, false, 1.00, false)]
+	[InlineData(6, 6, true, 1.00, true)]
+	[InlineData(6, 2, false, 0.89, false)]
+	[InlineData(6, 2, false, 0.90, false)]
+	[InlineData(6, 2, false, 0.91, true)]
+	public void SigningChecksActualInputsAndMiningFee(int inputCount, int ownInputCount, bool allowSolo, decimal feeRatio, bool expected)
+	{
+		var parameters = WabiSabiTestFactory.CreateRoundParameters(WabiSabiTestFactory.CreateDefaultWabiSabiConfig());
+		var inputs = Enumerable.Range(0, inputCount).Select(_ => WabiSabiTestFactory.CreateCoin()).ToArray();
+		var output = new TxOut(Money.Zero, BitcoinFactory.CreateScript());
+		var vsize = inputs.Sum(x => x.ScriptPubKey.EstimateInputVsize()) + output.ScriptPubKey.EstimateOutputVsize();
+		output.Value = inputs.Sum(x => x.Amount) - Money.Satoshis((long)(parameters.MiningFeeRate.GetFee(vsize).Satoshi * feeRatio));
+		var state = new SigningState(parameters, new IEvent[] { new RoundCreated(parameters), new OutputAdded(output) }
+			.Concat(inputs.Select(x => new InputAdded(x, null!))));
+		var configuration = new CoinJoinConfiguration("test", 0.3m, 150m, 6, allowSolo);
+
+		Assert.Equal(expected, CoinJoinClient.IsSigningStateSafe(state, ownInputCount, configuration));
+	}
+
+	[Theory]
+	[InlineData(false, false, true)]
+	[InlineData(true, false, false)]
+	[InlineData(false, true, false)]
+	public void BlameRoundRequiresPreviousInputsAndSuggestedAmount(bool foreignInput, bool changedAmount, bool expected)
+	{
+		var parameters = WabiSabiTestFactory.CreateRoundParameters(WabiSabiTestFactory.CreateDefaultWabiSabiConfig());
+		var original = WabiSabiTestFactory.CreateCoin();
+		var previous = new DisruptedCoinJoinResult([], ImmutableHashSet.Create(original.Outpoint), parameters.MaxSuggestedAmount);
+		if (changedAmount)
+		{
+			parameters = parameters with { MaxSuggestedAmount = parameters.MaxSuggestedAmount - Money.Satoshis(1) };
+		}
+		var input = foreignInput ? WabiSabiTestFactory.CreateCoin() : original;
+		var state = new SigningState(parameters, [new RoundCreated(parameters), new InputAdded(input, null!)]);
+
+		Assert.Equal(expected, CoinJoinClient.IsBlameRoundValid(state, previous));
 	}
 
 	[Fact]
