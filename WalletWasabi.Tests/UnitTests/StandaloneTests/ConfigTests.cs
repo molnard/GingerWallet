@@ -178,6 +178,7 @@ public class ConfigTests
 			  "MaxBlockRepositorySize": 1000,
 			  "Language": 1,
 			  "ExchangeCurrency": "{{exchangeCurrency}}",
+			  "ExchangeRatesEnabled": true,
 			  "GroupSeparator": "{{groupSeparator}}",
 			  "DecimalSeparator": "{{decimalSeparator}}",
 			  "ExtraNostrPubKey": "",

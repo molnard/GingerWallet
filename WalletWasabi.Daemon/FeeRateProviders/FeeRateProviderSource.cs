@@ -11,5 +11,8 @@ public enum FeeRateProviderSource
 	BlockstreamInfo,
 
 	[FriendlyName("Full Node")]
-	FullNode
+	FullNode,
+
+	[FriendlyName("Disabled (manual fees)")]
+	None
 }
