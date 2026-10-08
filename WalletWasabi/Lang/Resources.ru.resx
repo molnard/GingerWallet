@@ -2217,4 +2217,7 @@
   <data name="SecretHuntSettingsEnable" xml:space="preserve">
     <value>Включить/выключить использование этого кошелька для охоты за секретами.</value>
   </data>
+  <data name="MinimumFeeRateLimit" xml:space="preserve">
+    <value>Не может быть меньше {0} сат/вБ.</value>
+  </data>
 </root>
