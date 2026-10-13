@@ -29,6 +29,10 @@ public class BlockchainState
 	[JsonConverter(typeof(NetworkJsonConverter))]
 	public Network Network { get; set; }
 
+	[JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+	[System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+	public uint? BirthHeight { get; set; }
+
 	[JsonProperty]
 	[JsonConverter(typeof(WalletHeightJsonConverter))]
 	[System.Text.Json.Serialization.JsonConverter(typeof(WalletHeightJsonConverterNg))]

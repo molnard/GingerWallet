@@ -9,6 +9,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using WalletWasabi.Blockchain.Analysis.Clustering;
+using WalletWasabi.Blockchain.BlockFilters;
 using WalletWasabi.Blockchain.TransactionOutputs;
 using WalletWasabi.Extensions;
 using WalletWasabi.Helpers;
@@ -252,7 +253,8 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 		var encryptedSecret = extKey.PrivateKey.GetEncryptedBitcoinSecret(password, Network.Main);
 
 		HDFingerprint masterFingerprint = extKey.Neuter().PubKey.GetHDFingerPrint();
-		BlockchainState blockchainState = new(network);
+		var birthday = Bip158Checkpoints.NewWalletBirthday(network);
+		BlockchainState blockchainState = new(network) { BirthHeight = birthday };
 		KeyPath segwitAccountKeyPath = GetAccountKeyPath(network, ScriptPubKeyType.Segwit);
 		ExtPubKey segwitExtPubKey = extKey.Derive(segwitAccountKeyPath).Neuter();
 
@@ -463,11 +465,11 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 	/// </summary>
 	public record ScriptPubKeySpendingInfo(byte[] CompressedScriptPubKey, Height? LatestSpendingHeight);
 
-	public IEnumerable<ScriptPubKeySpendingInfo> UnsafeGetSynchronizationInfos()
+	public IEnumerable<ScriptPubKeySpendingInfo> UnsafeGetSynchronizationInfos(bool useBip158 = false)
 	{
 		lock (CriticalStateLock)
 		{
-			return HdPubKeyCache.Select(x => new ScriptPubKeySpendingInfo(x.CompressedScriptPubKey, x.HdPubKey.LatestSpendingHeight));
+			return HdPubKeyCache.Select(x => new ScriptPubKeySpendingInfo(useBip158 ? x.RawScriptPubKey : x.CompressedScriptPubKey, x.HdPubKey.LatestSpendingHeight));
 		}
 	}
 
@@ -723,6 +725,18 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 
 	#region BlockchainState
 
+	[JsonIgnore]
+	public uint? BirthHeight
+	{
+		get
+		{
+			lock (CriticalStateLock)
+			{
+				return BlockchainState.BirthHeight;
+			}
+		}
+	}
+
 	public Height GetBestHeight()
 	{
 		lock (CriticalStateLock)
@@ -781,6 +795,8 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 				TaprootInternalKeyGenerator = internalGenerator with { MinGapLimit = minGapLimit };
 			}
 			MinGapLimit = minGapLimit;
+			// An explicit rescan may target payments older than a newly created wallet birthday.
+			BlockchainState.BirthHeight = null;
 			AssertCleanKeysIndexed();
 			// Wallet serialization subtracts 101 blocks for reorg/maturity safety.
 			// Persist the block before the requested starting height so it is scanned inclusively.

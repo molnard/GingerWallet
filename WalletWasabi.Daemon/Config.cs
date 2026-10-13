@@ -59,6 +59,9 @@ public class Config
 			[nameof(UseTor)] = (
 				"All the communications go through the Tor network",
 				GetTorModeValue("UseTor", PersistentConfig.UseTor, cliArgs)),
+			[nameof(UseP2pFilters)] = (
+				"Download BIP158 compact filters from Bitcoin peers instead of the backend",
+				GetBoolValue("UseP2pFilters", PersistentConfig.UseP2pFilters, cliArgs)),
 			[nameof(TorFolder)] = (
 				"Folder where Tor binary is located",
 				GetNullableStringValue("TorFolder", null, cliArgs)),
@@ -206,6 +209,8 @@ public class Config
 	public string[] JsonRpcServerPrefixes => GetEffectiveValue<StringArrayValue, string[]>(nameof(JsonRpcServerPrefixes));
 	public bool RpcOnionEnabled => GetEffectiveValue<BoolValue, bool>(nameof(RpcOnionEnabled));
 	public Money DustThreshold => GetEffectiveValue<MoneyValue, Money>(nameof(DustThreshold));
+	public bool UseP2pFilters => GetEffectiveValue<BoolValue, bool>(nameof(UseP2pFilters));
+
 	public bool BlockOnlyMode => GetEffectiveValue<BoolValue, bool>(nameof(BlockOnlyMode));
 	public string LogLevel => GetEffectiveValue<StringValue, string>(nameof(LogLevel));
 	public LogMode[] LogModes => GetEffectiveValue<LogModeArrayValue, LogMode[]>(nameof(LogModes));

@@ -61,6 +61,10 @@ public record PersistentConfig : IConfigNg
 	public object UseTor { get; init; } = "Enabled";
 
 	[DefaultValue(false)]
+	[JsonPropertyName("UseP2pFilters")]
+	public bool UseP2pFilters { get; init; }
+
+	[DefaultValue(false)]
 	[JsonPropertyName("TerminateTorOnExit")]
 	public bool TerminateTorOnExit { get; init; } = false;
 
@@ -176,6 +180,7 @@ public record PersistentConfig : IConfigNg
 			RegTestCoordinatorUri == other.RegTestCoordinatorUri &&
 			useTorIsEqual &&
 			TerminateTorOnExit == other.TerminateTorOnExit &&
+			UseP2pFilters == other.UseP2pFilters &&
 			DownloadNewVersion == other.DownloadNewVersion &&
 			StartLocalBitcoinCoreOnStartup == other.StartLocalBitcoinCoreOnStartup &&
 			StopLocalBitcoinCoreOnShutdown == other.StopLocalBitcoinCoreOnShutdown &&
