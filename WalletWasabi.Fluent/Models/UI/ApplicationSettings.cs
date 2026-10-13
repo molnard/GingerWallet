@@ -51,6 +51,7 @@ public partial class ApplicationSettings : ReactiveObject
 	[AutoNotify] private bool _darkModeEnabled;
 	[AutoNotify] private DisplayLanguage _selectedDisplayLanguage;
 	[AutoNotify] private string _selectedExchangeCurrency;
+	[AutoNotify] private bool _exchangeRatesEnabled;
 	[AutoNotify] private FeeDisplayUnit _selectedFeeDisplayUnit;
 	[AutoNotify] private string _selectedDecimalSeparator;
 	[AutoNotify] private string _selectedGroupSeparator;
@@ -113,6 +114,7 @@ public partial class ApplicationSettings : ReactiveObject
 		_darkModeEnabled = _uiConfig.DarkModeEnabled;
 		_selectedDisplayLanguage = (DisplayLanguage)_startupConfig.DisplayLanguage;
 		_selectedExchangeCurrency = _startupConfig.ExchangeCurrency;
+		_exchangeRatesEnabled = _startupConfig.ExchangeRatesEnabled;
 		_selectedFeeDisplayUnit = Enum.IsDefined(typeof(FeeDisplayUnit), _uiConfig.FeeDisplayUnit)
 			? (FeeDisplayUnit)_uiConfig.FeeDisplayUnit
 			: FeeDisplayUnit.Satoshis;
@@ -170,6 +172,7 @@ public partial class ApplicationSettings : ReactiveObject
 		this.WhenAnyValue(
 				x => x.SelectedDisplayLanguage,
 				x => x.SelectedExchangeCurrency,
+				x => x.ExchangeRatesEnabled,
 				x => x.SelectedDecimalSeparator,
 				x => x.SelectedGroupSeparator,
 				x => x.SelectedBtcFractionGroup,
@@ -363,6 +366,7 @@ public partial class ApplicationSettings : ReactiveObject
 		{
 			DisplayLanguage = (int)SelectedDisplayLanguage,
 			ExchangeCurrency = SelectedExchangeCurrency,
+			ExchangeRatesEnabled = ExchangeRatesEnabled,
 			DecimalSeparator = SelectedDecimalSeparator,
 			GroupSeparator = SelectedGroupSeparator,
 			BtcFractionGroup = SelectedBtcFractionGroup,

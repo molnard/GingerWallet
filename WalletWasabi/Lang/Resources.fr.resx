@@ -2215,4 +2215,7 @@
   <data name="SecretHuntSettingsEnable" xml:space="preserve">
     <value>Activer ou désactiver l’utilisation de ce portefeuille pour la Chasse aux Secrets.</value>
   </data>
+  <data name="EnableExchangeRates" xml:space="preserve">
+    <value>Activer les taux de change des monnaies fiduciaires</value>
+  </data>
 </root>

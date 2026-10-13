@@ -50,7 +50,12 @@
       </ComboBox>
     </DockPanel>
 
-    <DockPanel IsEnabled="{Binding ExchangeCurrencySelectionEnabled^}">
+    <DockPanel>
+      <TextBlock Text="{x:Static lang:Resources.EnableExchangeRates}" />
+      <ToggleSwitch IsChecked="{Binding Settings.ExchangeRatesEnabled}" />
+    </DockPanel>
+
+    <DockPanel IsEnabled="{Binding Settings.ExchangeRatesEnabled}">
       <TextBlock Text="{x:Static lang:Resources.ExchangeCurrency}" />
       <ComboBox ItemsSource="{Binding ExchangeCurrencies^}" SelectedItem="{Binding Settings.SelectedExchangeCurrency}" />
     </DockPanel>
