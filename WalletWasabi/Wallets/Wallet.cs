@@ -258,7 +258,7 @@ public class Wallet : BackgroundService, IWallet
 		else if (PasswordHelper.TryPassword(KeyManager, password, out compatibilityPasswordUsed))
 		{
 			IsLoggedIn = true;
-			Kitchen.Cook(compatibilityPasswordUsed ?? Guard.Correct(password));
+			Kitchen.Cook(compatibilityPasswordUsed ?? (KeyManager.IsMultiShareBackup ? password : Guard.Correct(password)));
 		}
 
 		return IsLoggedIn;

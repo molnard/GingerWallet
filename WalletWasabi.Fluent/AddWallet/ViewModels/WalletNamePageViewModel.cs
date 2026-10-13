@@ -50,7 +50,7 @@ public partial class WalletNamePageViewModel : RoutableViewModel
 		switch (options)
 		{
 			case WalletCreationOptions.AddNewWallet add:
-				UiContext.Navigate().To().RecoveryWords(add);
+				UiContext.Navigate().To().WalletBackupType(add);
 				break;
 
 			case WalletCreationOptions.ConnectToHardwareWallet chw:
@@ -58,7 +58,7 @@ public partial class WalletNamePageViewModel : RoutableViewModel
 				break;
 
 			case WalletCreationOptions.RecoverWallet rec:
-				UiContext.Navigate().To().RecoverWallet(rec);
+				UiContext.Navigate().To().WalletBackupType(rec);
 				break;
 
 			case WalletCreationOptions.ImportWallet imp:

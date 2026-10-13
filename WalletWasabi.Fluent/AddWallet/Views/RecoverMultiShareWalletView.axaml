@@ -1,0 +1,13 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:lang="using:WalletWasabi.Lang" xmlns:models="using:WalletWasabi.Fluent.AddWallet.ViewModels"
+             x:Class="WalletWasabi.Fluent.AddWallet.Views.RecoverMultiShareWalletView"
+             x:DataType="models:RecoverMultiShareWalletViewModel" x:CompileBindings="True">
+  <ContentArea Title="{Binding Title}" EnableNext="True" EnableBack="{Binding EnableBack}" EnableCancel="{Binding EnableCancel}" IsBusy="{Binding IsBusy}">
+    <StackPanel Spacing="16" HorizontalAlignment="Center" MaxWidth="550">
+      <Label Content="{x:Static lang:Resources.MultiShareEnter}" Target="SharesBox" />
+      <TextBox Name="SharesBox" Text="{Binding SharesText}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="180" />
+      <TextBlock Text="{Binding ValidationMessage}" TextWrapping="Wrap" />
+      <Button Content="{x:Static lang:Resources.AdvancedRecoveryOptionsViewModelTitle}" Command="{Binding AdvancedRecoveryOptionsDialogCommand}" Classes="plain activeHyperLink" />
+    </StackPanel>
+  </ContentArea>
+</UserControl>

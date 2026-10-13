@@ -18,6 +18,8 @@ using WalletWasabi.Logging;
 using WalletWasabi.Models;
 using WalletWasabi.SecretHunt;
 using WalletWasabi.Wallets;
+using WalletWasabi.Wallets.Slip39;
+using System.Security.Cryptography;
 using static WalletWasabi.Blockchain.Keys.WpkhOutputDescriptorHelper;
 
 namespace WalletWasabi.Blockchain.Keys;
@@ -181,6 +183,9 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 
 	public bool PreferPsbtWorkflow { get; set; }
 
+	/// <summary>Identifies the recovery format; absent in legacy BIP39 wallet files.</summary>
+	public bool IsMultiShareBackup { get; set; }
+
 	public bool AutoCoinJoin { get => Attributes.AutoCoinJoin; set => Attributes.AutoCoinJoin = value; }
 
 	[JsonIgnore]
@@ -290,6 +295,31 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 		var km = new KeyManager(encryptedSecret, extKey.ChainCode, masterFingerprint, segwitExtPubKey, taprootExtPubKey, minGapLimit, new BlockchainState(network), filePath, segwitAccountKeyPath, taprootAccountKeyPath);
 		km.AssertCleanKeysIndexed();
 		return km;
+	}
+
+	public static KeyManager RecoverMultiShare(Share[] shares, string password, Network network, KeyPath? swAccountKeyPath = null, KeyPath? trAccountKeyPath = null, string? filePath = null, int minGapLimit = AbsoluteMinGapLimit)
+	{
+		password ??= "";
+		var seed = Shamir.Combine(Shamir.SelectRecoveryShares(shares), password);
+		try
+		{
+			var extKey = ExtKey.CreateFromSeed(seed);
+			var swPath = swAccountKeyPath ?? GetAccountKeyPath(network, ScriptPubKeyType.Segwit);
+			var trPath = trAccountKeyPath ?? GetAccountKeyPath(network, ScriptPubKeyType.TaprootBIP86);
+			var km = new KeyManager(extKey.PrivateKey.GetEncryptedBitcoinSecret(password, Network.Main), extKey.ChainCode,
+				extKey.Neuter().PubKey.GetHDFingerPrint(), extKey.Derive(swPath).Neuter(), extKey.Derive(trPath).Neuter(),
+				minGapLimit, new BlockchainState(network), null, swPath, trPath)
+			{
+				IsMultiShareBackup = true
+			};
+			km.AssertCleanKeysIndexed();
+			km.SetFilePath(filePath);
+			return km;
+		}
+		finally
+		{
+			CryptographicOperations.ZeroMemory(seed);
+		}
 	}
 
 	public static KeyManager FromFile(string filePath, string? secret = null)

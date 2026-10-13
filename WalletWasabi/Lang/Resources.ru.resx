@@ -2217,4 +2217,46 @@
   <data name="SecretHuntSettingsEnable" xml:space="preserve">
     <value>Включить/выключить использование этого кошелька для охоты за секретами.</value>
   </data>
+  <data name="WalletBackupType" xml:space="preserve">
+    <value>Тип резервной копии кошелька</value>
+  </data>
+  <data name="MultiShareBackup" xml:space="preserve">
+    <value>Резервная копия из нескольких долей (SLIP39)</value>
+  </data>
+  <data name="MultiShareDescription" xml:space="preserve">
+    <value>Резервная копия из нескольких долей разделяет секрет кошелька на части. Вы выбираете, сколько долей нужно для восстановления. Храните каждую долю в отдельном безопасном месте.</value>
+  </data>
+  <data name="SingleMnemonicBackup" xml:space="preserve">
+    <value>Одна фраза восстановления (BIP39)</value>
+  </data>
+  <data name="MultiShareCount" xml:space="preserve">
+    <value>Общее количество долей</value>
+  </data>
+  <data name="MultiShareThreshold" xml:space="preserve">
+    <value>Доли, необходимые для восстановления</value>
+  </data>
+  <data name="InvalidMultiShareOptions" xml:space="preserve">
+    <value>Используйте от 1 до 16 долей и порог не выше общего количества. Порог 1 требует ровно 1 долю.</value>
+  </data>
+  <data name="ShareProgress" xml:space="preserve">
+    <value>Доля {0} из {1}</value>
+  </data>
+  <data name="MultiShareStoreSafely" xml:space="preserve">
+    <value>Запишите все слова по порядку и храните эту долю отдельно. Эти слова показываются только при создании.</value>
+  </data>
+  <data name="MultiShareConfirm" xml:space="preserve">
+    <value>Введите эту долю из вашей записанной резервной копии для подтверждения.</value>
+  </data>
+  <data name="MultiSharePassphrase" xml:space="preserve">
+    <value>Введите исходную парольную фразу SLIP39. Допускается пустая фраза. Каждая парольная фраза создаёт другой кошелёк. Эта фраза также защищает файл кошелька.</value>
+  </data>
+  <data name="MultiSharePassphraseAscii" xml:space="preserve">
+    <value>Парольные фразы SLIP39 могут содержать только печатные символы ASCII.</value>
+  </data>
+  <data name="MultiShareEnter" xml:space="preserve">
+    <value>Введите одну полную долю SLIP39 в каждой строке.</value>
+  </data>
+  <data name="InvalidMultiShareSet" xml:space="preserve">
+    <value>Неверные или недостаточные доли SLIP39. Проверьте слова, группы долей и парольную фразу.</value>
+  </data>
 </root>
