@@ -1789,6 +1789,15 @@ namespace WalletWasabi.Lang {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Saved for this wallet.
+        /// </summary>
+        public static string ReceiveDefaultAddressTypeHint {
+            get {
+                return ResourceManager.GetString("ReceiveDefaultAddressTypeHint", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Default.
         /// </summary>
         public static string Default {
@@ -3090,6 +3099,15 @@ namespace WalletWasabi.Lang {
         public static string MinFeeLimit {
             get {
                 return ResourceManager.GetString("MinFeeLimit", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Cannot be less than {0} sat/vByte.
+        /// </summary>
+        public static string MinimumFeeRateLimit {
+            get {
+                return ResourceManager.GetString("MinimumFeeRateLimit", resourceCulture);
             }
         }
         
@@ -6373,6 +6391,54 @@ namespace WalletWasabi.Lang {
 
         public static string BatchAmountPrecision {
             get { return ResourceManager.GetString("BatchAmountPrecision", resourceCulture); }
+        }
+
+        public static string TransactionInputs {
+            get { return ResourceManager.GetString("TransactionInputs", resourceCulture); }
+        }
+
+        public static string TransactionOutputs {
+            get { return ResourceManager.GetString("TransactionOutputs", resourceCulture); }
+        }
+
+        public static string TransactionCoinOwn {
+            get { return ResourceManager.GetString("TransactionCoinOwn", resourceCulture); }
+        }
+
+        public static string TransactionCoinChange {
+            get { return ResourceManager.GetString("TransactionCoinChange", resourceCulture); }
+        }
+
+        public static string TransactionCoinExternal {
+            get { return ResourceManager.GetString("TransactionCoinExternal", resourceCulture); }
+        }
+
+        public static string TransactionCoinOutpoint {
+            get { return ResourceManager.GetString("TransactionCoinOutpoint", resourceCulture); }
+        }
+
+        public static string TransactionViewerOpen {
+            get { return ResourceManager.GetString("TransactionViewerOpen", resourceCulture); }
+        }
+
+        public static string TransactionViewerSelectedInput {
+            get { return ResourceManager.GetString("TransactionViewerSelectedInput", resourceCulture); }
+        }
+
+        public static string TransactionViewerSelectedOutput {
+            get { return ResourceManager.GetString("TransactionViewerSelectedOutput", resourceCulture); }
+        }
+
+        public static string TransactionViewerCurrentRate {
+            get { return ResourceManager.GetString("TransactionViewerCurrentRate", resourceCulture); }
+        }
+
+        public static string TransactionViewerInput {
+            get { return ResourceManager.GetString("TransactionViewerInput", resourceCulture); }
+        }
+
+        public static string TransactionViewerOutput {
+            get { return ResourceManager.GetString("TransactionViewerOutput", resourceCulture); }
         }
 
     }
