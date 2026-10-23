@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using WalletWasabi.Blockchain.Keys;
 using WalletWasabi.Blockchain.TransactionOutputs;
+using WalletWasabi.Blockchain.TransactionProcessing;
 using WalletWasabi.Blockchain.Transactions;
 using WalletWasabi.Extensions;
 using WalletWasabi.Helpers;
@@ -129,22 +130,84 @@ public class WalletManager : IWalletProvider
 		var (currentWalletFilePath, currentWalletBackupFilePath, currentWalletAttrFilePath) = WalletDirectories.GetWalletFilePaths(wallet.WalletName);
 		var (newWalletFilePath, newWalletBackupFilePath, newWalletAttrFilePath) = WalletDirectories.GetWalletFilePaths(newWalletName);
 
-		Logger.LogInfo($"Renaming file {currentWalletFilePath} to {newWalletFilePath}");
-		File.Move(currentWalletFilePath, newWalletFilePath);
-
-		Logger.LogInfo($"Renaming file {currentWalletAttrFilePath} to {newWalletAttrFilePath}");
-		File.Move(currentWalletAttrFilePath, newWalletAttrFilePath);
-
-		try
+		lock (TransactionProcessor.Lock)
 		{
-			File.Move(currentWalletBackupFilePath, newWalletBackupFilePath);
-		}
-		catch (Exception e)
-		{
-			Logger.LogWarning($"Could not rename wallet backup file. Reason: {e.Message}");
-		}
+			// Keep the original proof journal until both wallet files have moved. A failed rename must remain recoverable.
+			var journalCopied = WalletTransactionJournal.Copy(currentWalletFilePath, newWalletFilePath);
+			var walletMoved = false;
+			var attributesMoved = false;
+			try
+			{
+				Logger.LogInfo($"Renaming file {currentWalletFilePath} to {newWalletFilePath}");
+				File.Move(currentWalletFilePath, newWalletFilePath);
+				walletMoved = true;
+				Logger.LogInfo($"Renaming file {currentWalletAttrFilePath} to {newWalletAttrFilePath}");
+				File.Move(currentWalletAttrFilePath, newWalletAttrFilePath);
+				attributesMoved = true;
+				wallet.KeyManager.SetFilePath(newWalletFilePath);
+			}
+			catch
+			{
+				try
+				{
+					if (attributesMoved)
+					{
+						File.Move(newWalletAttrFilePath, currentWalletAttrFilePath);
+					}
+					if (walletMoved)
+					{
+						File.Move(newWalletFilePath, currentWalletFilePath);
+					}
+				}
+				catch (Exception rollbackException)
+				{
+					Logger.LogError("Could not completely roll back the wallet rename.", rollbackException);
+				}
+				if (File.Exists(currentWalletFilePath))
+				{
+					wallet.KeyManager.SetFilePath(currentWalletFilePath);
+					if (journalCopied)
+					{
+						TryDeleteJournal(newWalletFilePath);
+					}
+				}
+				else if (File.Exists(newWalletFilePath))
+				{
+					// Both proof copies still exist if a filesystem failure also prevents rollback.
+					wallet.KeyManager.SetFilePath(newWalletFilePath);
+				}
+				throw;
+			}
+			if (journalCopied)
+			{
+				TryDeleteJournal(currentWalletFilePath);
+			}
 
-		wallet.KeyManager.SetFilePath(newWalletFilePath);
+			try
+			{
+				var backupJournalCopied = WalletTransactionJournal.Copy(currentWalletBackupFilePath, newWalletBackupFilePath);
+				try
+				{
+					File.Move(currentWalletBackupFilePath, newWalletBackupFilePath);
+				}
+				catch
+				{
+					if (backupJournalCopied)
+					{
+						TryDeleteJournal(newWalletBackupFilePath);
+					}
+					throw;
+				}
+				if (backupJournalCopied)
+				{
+					TryDeleteJournal(currentWalletBackupFilePath);
+				}
+			}
+			catch (Exception e)
+			{
+				Logger.LogWarning($"Could not rename wallet backup file. Reason: {e.Message}");
+			}
+		}
 	}
 
 	public (ErrorSeverity Severity, string Message)? ValidateWalletName(string walletName)
@@ -287,6 +350,13 @@ public class WalletManager : IWalletProvider
 				Logger.LogInfo($"Backed up corrupted wallet file to `{corruptedWalletBackupPath}`.");
 			}
 			File.Copy(walletBackupFullPath, walletFullPath);
+			lock (TransactionProcessor.Lock)
+			{
+				if (!WalletTransactionJournal.Exists(walletFullPath))
+				{
+					WalletTransactionJournal.Copy(walletBackupFullPath, walletFullPath);
+				}
+			}
 
 			wallet = WalletFactory.Create(KeyManager.FromFile(walletFullPath, secret));
 		}
@@ -298,16 +368,19 @@ public class WalletManager : IWalletProvider
 	{
 		var (walletFile, backupFile, attrFile) = WalletDirectories.GetWalletFilePaths(wallet.WalletName);
 
-		wallet.KeyManager.SetFilePath(null);
-
-		if (!TryDelete(walletFile))
+		lock (TransactionProcessor.Lock)
 		{
-			wallet.KeyManager.SetFilePath(walletFile);
-			return false;
+			wallet.KeyManager.SetFilePath(null);
+			if (!TryDelete(walletFile))
+			{
+				wallet.KeyManager.SetFilePath(walletFile);
+				return false;
+			}
+			TryDeleteJournal(walletFile);
+			TryDeleteJournal(backupFile);
+			TryDelete(backupFile);
+			TryDelete(attrFile);
 		}
-
-		TryDelete(backupFile);
-		TryDelete(attrFile);
 
 		lock (Lock)
 		{
@@ -336,6 +409,18 @@ public class WalletManager : IWalletProvider
 			}
 
 			return false;
+		}
+	}
+
+	private static void TryDeleteJournal(string walletFilePath)
+	{
+		try
+		{
+			WalletTransactionJournal.Delete(walletFilePath);
+		}
+		catch (Exception ex)
+		{
+			Logger.LogWarning($"Could not delete wallet transaction journal: {ex}");
 		}
 	}
 
@@ -406,7 +491,14 @@ public class WalletManager : IWalletProvider
 						if (keyManager.FilePath is not null)
 						{
 							string backupWalletFilePath = WalletDirectories.GetWalletFilePaths(Path.GetFileName(keyManager.FilePath)!).walletBackupFilePath;
-							keyManager.ToFile(backupWalletFilePath);
+							lock (TransactionProcessor.Lock)
+							{
+								keyManager.ToFile(backupWalletFilePath);
+								if (!WalletTransactionJournal.Copy(keyManager.FilePath, backupWalletFilePath, overwrite: true))
+								{
+									TryDeleteJournal(backupWalletFilePath);
+								}
+							}
 							Logger.LogInfo($"{nameof(wallet.KeyManager)} backup saved to `{backupWalletFilePath}`.");
 						}
 						await wallet.StopAsync(cancel).ConfigureAwait(false);

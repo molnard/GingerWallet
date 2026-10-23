@@ -311,7 +311,6 @@ public class Wallet : BackgroundService, IWallet
 			await WalletFilterProcessor.StartAsync(cancel).ConfigureAwait(false);
 
 			await LoadWalletStateAsync(cancel).ConfigureAwait(false);
-			await LoadDummyMempoolAsync().ConfigureAwait(false);
 			LoadCoinProperties();
 
 			await base.StartAsync(cancel).ConfigureAwait(false);
@@ -465,21 +464,15 @@ public class Wallet : BackgroundService, IWallet
 
 		TransactionProcessor.Process(BitcoinStore.TransactionStore.ConfirmedStore.GetTransactions().TakeWhile(x => x.Height <= bestTurboSyncHeight));
 
-		BitcoinStore.IndexStore.NewFilters += IndexDownloader_NewFiltersAsync;
-
-		// Each time a new batch of filters is downloaded, request a synchronization.
-		var lastHashesLeft = BitcoinStore.SmartHeaderChain.HashesLeft;
-		while (BitcoinStore.SmartHeaderChain.HashesLeft > 0)
+		// The index must first identify the active chain so persisted conflict proofs can be checked.
+		// Load pending transactions before processing unseen filters, including transactions the backend no longer relays.
+		await BitcoinStore.SmartHeaderChain.ServerTipInitializedTcs.Task.WaitAsync(cancel).ConfigureAwait(false);
+		while (BitcoinStore.SmartHeaderChain.HashesLeft > 0 || BitcoinStore.SmartHeaderChain.TipHeight != BitcoinStore.SmartHeaderChain.ServerTipHeight)
 		{
-			cancel.ThrowIfCancellationRequested();
-			if (lastHashesLeft == BitcoinStore.SmartHeaderChain.HashesLeft)
-			{
-				await Task.Delay(100, cancel).ConfigureAwait(false);
-				continue;
-			}
-			lastHashesLeft = BitcoinStore.SmartHeaderChain.HashesLeft;
-			await PerformSynchronizationAsync(cancel).ConfigureAwait(false);
+			await Task.Delay(100, cancel).ConfigureAwait(false);
 		}
+		await WalletFilterProcessor.LoadUnconfirmedTransactionsAsync(cancel).ConfigureAwait(false);
+		BitcoinStore.IndexStore.NewFilters += IndexDownloader_NewFiltersAsync;
 
 		// Request a synchronization once all filters were downloaded.
 		await PerformSynchronizationAsync(cancel).ConfigureAwait(false);
@@ -488,54 +481,6 @@ public class Wallet : BackgroundService, IWallet
 	public async Task PerformSynchronizationAsync(CancellationToken cancellationToken)
 	{
 		await WalletFilterProcessor.ProcessAsync(cancellationToken).ConfigureAwait(false);
-	}
-
-	private async Task LoadDummyMempoolAsync()
-	{
-		if (BitcoinStore.TransactionStore.MempoolStore.IsEmpty())
-		{
-			return;
-		}
-
-		// Only clean the mempool if we're fully synchronized.
-		if (BitcoinStore.SmartHeaderChain.HashesLeft == 0)
-		{
-			try
-			{
-				var client = Synchronizer.HttpClientFactory.SharedWasabiClient;
-				var compactness = 10;
-
-				var mempoolHashes = await client.GetMempoolHashesAsync(compactness).ConfigureAwait(false);
-
-				var txsToProcess = new List<SmartTransaction>();
-				foreach (var tx in BitcoinStore.TransactionStore.MempoolStore.GetTransactions())
-				{
-					uint256 txid = tx.GetHash();
-					if (mempoolHashes.Contains(txid.ToString()[..compactness]))
-					{
-						txsToProcess.Add(tx);
-						Logger.LogInfo($"'{WalletName}': Transaction was successfully tested against the backend's mempool hashes: {txid}.");
-					}
-					else
-					{
-						BitcoinStore.TransactionStore.MempoolStore.TryRemove(txid, out _);
-					}
-				}
-
-				TransactionProcessor.Process(txsToProcess);
-			}
-			catch (Exception ex)
-			{
-				// When there's a connection failure do not clean the transactions, add them to processing.
-				TransactionProcessor.Process(BitcoinStore.TransactionStore.MempoolStore.GetTransactions());
-
-				Logger.LogWarning(ex);
-			}
-		}
-		else
-		{
-			TransactionProcessor.Process(BitcoinStore.TransactionStore.MempoolStore.GetTransactions());
-		}
 	}
 
 	public void SetWaitingForInitState()

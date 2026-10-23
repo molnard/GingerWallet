@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using WalletWasabi.Blockchain.Analysis.Clustering;
 using WalletWasabi.Blockchain.Keys;
+using WalletWasabi.Blockchain.Mempool;
 using WalletWasabi.Blockchain.TransactionOutputs;
 using WalletWasabi.Blockchain.TransactionProcessing;
 using WalletWasabi.Blockchain.Transactions;
@@ -160,7 +161,9 @@ public class TransactionProcessorTests
 		Assert.Empty(res4.NewlyConfirmedReceivedCoins);
 		Assert.Single(res4.NewlyConfirmedSpentCoins);
 		Assert.Empty(res4.NewlyReceivedCoins);
-		Assert.Single(res4.NewlySpentCoins);
+		Assert.Empty(res4.NewlySpentCoins);
+		Assert.Same(res3.Transaction, res4.Transaction);
+		Assert.False(res4.Transaction.IsReplacement);
 		Assert.Empty(res4.ReceivedCoins);
 		Assert.Single(res4.SpentCoins);
 		Assert.Empty(res4.ReceivedDusts);
@@ -1461,6 +1464,393 @@ public class TransactionProcessorTests
 		var actualPockets = pockets.Select(tuple => tuple.Labels).ToHashSet(comparer: LabelsComparer.Instance);
 
 		Assert.True(expectedPockets.SetEquals(actualPockets));
+	}
+
+	[Fact]
+	public async Task ConfirmedLegacyConflictInvalidatesIncomingPaymentAndAllowsBroadcastObjectReplayAsync()
+	{
+		await using var txStore = await CreateTransactionStoreAsync();
+		var mempool = new MempoolService();
+		var keyManager = KeyManager.CreateNew(out _, "password", Network.Main);
+		var processor = new TransactionProcessor(txStore, mempool, keyManager, Money.Coins(0.0001m));
+		var original = CreateCreditingTransaction(processor.NewKey("payment").P2wpkhScript, Money.Coins(0.5m));
+		Assert.True(mempool.TryAddToBroadcastStore(original, "127.0.0.1:18444"));
+		mempool.TransactionReceived += (_, transaction) =>
+		{
+			if (!processor.IsAware(transaction.GetHash()))
+			{
+				processor.Process(transaction);
+			}
+		};
+		mempool.Process(original.Transaction);
+		var oldCoin = Assert.Single(processor.Coins);
+		var archived = new HashSet<uint256>();
+		processor.IsInvalidatedTransaction = archived.Contains;
+		processor.ConfirmedConflictDetected += (confirmed, invalidated) =>
+		{
+			Assert.True(confirmed.Confirmed);
+			Assert.Same(oldCoin, Assert.Single(processor.Coins));
+			Assert.True(txStore.MempoolStore.Contains(original.GetHash()));
+			archived.UnionWith(invalidated.Select(transaction => transaction.GetHash()));
+		};
+		var cancellation = CreateConfirmedConflict(original);
+		Assert.False(cancellation.Transaction.SegWitInvolved());
+
+		var result = processor.Process(cancellation);
+
+		Assert.Same(oldCoin, Assert.Single(result.SuccessfullyDoubleSpentCoins));
+		Assert.Empty(processor.Coins);
+		Assert.Equal(Money.Zero, processor.Coins.GetTotalBalance());
+		Assert.Empty(original.WalletOutputs);
+		Assert.False(processor.IsAware(original.GetHash()));
+		Assert.False(txStore.MempoolStore.Contains(original.GetHash()));
+		Assert.False(processor.Process(original).IsNews);
+		Assert.Empty(processor.Coins);
+
+		// A positive reorg releases the archived payment. P2P rediscovery must use
+		// the original broadcast-store object without retaining its removed coin.
+		archived.Clear();
+		processor.ForgetTransaction(original.GetHash());
+		Assert.False(mempool.IsProcessed(original.GetHash()));
+		mempool.Process(original.Transaction);
+		var restoredCoin = Assert.Single(processor.Coins);
+		Assert.NotSame(oldCoin, restoredCoin);
+		Assert.Same(original, restoredCoin.Transaction);
+		Assert.Same(restoredCoin, Assert.Single(original.WalletOutputs));
+		Assert.Null(restoredCoin.SpenderTransaction);
+		Assert.Equal(Money.Coins(0.5m), processor.Coins.GetTotalBalance());
+		Assert.True(txStore.MempoolStore.Contains(original.GetHash()));
+	}
+
+	[Theory]
+	[InlineData(false, false)]
+	[InlineData(false, true)]
+	[InlineData(true, false)]
+	[InlineData(true, true)]
+	public async Task ConfirmedConflictRestoresDescendantIndependentInputsInEitherBlockOrderAsync(bool childHasWalletOutput, bool independentSpendFirst)
+	{
+		await using var txStore = await CreateTransactionStoreAsync();
+		var processor = CreateTransactionProcessor(txStore);
+		var independent = CreateCreditingTransaction(processor.NewKey("independent").P2wpkhScript, Money.Coins(1m), height: 100);
+		var parent = CreateCreditingTransaction(processor.NewKey("payment").P2wpkhScript, Money.Coins(0.5m));
+		processor.Process(independent, parent);
+		var independentCoin = Assert.Single(processor.Coins, coin => coin.TransactionId == independent.GetHash());
+		var childScript = childHasWalletOutput ? processor.NewKey("child").P2wpkhScript : BitcoinFactory.CreateScript();
+		var child = CreateSpendingTransaction(
+			independent.Transaction.Outputs.AsCoins().Concat(parent.Transaction.Outputs.AsCoins()), childScript, BitcoinFactory.CreateScript());
+		processor.Process(child);
+		Assert.Same(child, independentCoin.SpenderTransaction);
+		Assert.Equal(2, child.WalletInputs.Count);
+		var cancellation = CreateConfirmedConflict(parent);
+		var independentSpend = CreateSpendingTransaction(independent.Transaction.Outputs.AsCoins().Single(), BitcoinFactory.CreateScript(), height: cancellation.Height.Value);
+		var archived = new List<uint256>();
+		processor.ConfirmedConflictDetected += (_, invalidated) => archived.AddRange(invalidated.Select(transaction => transaction.GetHash()));
+
+		if (independentSpendFirst)
+		{
+			processor.Process(independentSpend);
+		}
+		var result = processor.Process(cancellation);
+
+		Assert.Contains(parent.GetHash(), archived);
+		Assert.Contains(child.GetHash(), archived);
+		Assert.Empty(parent.WalletOutputs);
+		Assert.Empty(child.WalletOutputs);
+		Assert.Empty(child.WalletInputs);
+		Assert.False(txStore.MempoolStore.Contains(parent.GetHash()));
+		Assert.False(txStore.MempoolStore.Contains(child.GetHash()));
+		Assert.False(processor.Coins.TryGetTxAmount(child.GetHash(), out _));
+		Assert.DoesNotContain(result.RestoredCoins, coin => coin.TransactionId == parent.GetHash());
+		if (!independentSpendFirst)
+		{
+			Assert.Same(independentCoin, Assert.Single(processor.Coins));
+			Assert.Null(independentCoin.SpenderTransaction);
+			Assert.Equal(Money.Coins(1m), processor.Coins.GetTotalBalance());
+			Assert.Equal(processor.Coins.TotalAmount(), processor.Coins.GetTotalBalance());
+			processor.Process(independentSpend);
+		}
+		Assert.Empty(processor.Coins);
+		Assert.Same(independentSpend, independentCoin.SpenderTransaction);
+		Assert.Equal(Money.Zero, processor.Coins.GetTotalBalance());
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task ConfirmedBlockBatchRestoresIndependentInputsWithoutRememberingForeignTransactionsAsync(bool independentSpendFirst)
+	{
+		await using var txStore = await CreateTransactionStoreAsync();
+		var processor = CreateTransactionProcessor(txStore);
+		var independent = CreateCreditingTransaction(processor.NewKey("independent").P2wpkhScript, Money.Coins(1m), height: 100);
+		var parent = CreateCreditingTransaction(processor.NewKey("payment").P2wpkhScript, Money.Coins(0.5m));
+		processor.Process(independent, parent);
+		var independentCoin = Assert.Single(processor.Coins, coin => coin.TransactionId == independent.GetHash());
+		var child = CreateSpendingTransaction(
+			independent.Transaction.Outputs.AsCoins().Concat(parent.Transaction.Outputs.AsCoins()), BitcoinFactory.CreateScript(), BitcoinFactory.CreateScript());
+		processor.Process(child);
+		var cancellation = CreateConfirmedConflict(parent);
+		var independentSpend = CreateSpendingTransaction(independent.Transaction.Outputs.AsCoins().Single(), BitcoinFactory.CreateScript(), height: 101);
+		var foreign = CreateCreditingTransaction(BitcoinFactory.CreateScript(), Money.Coins(2m), height: 101);
+		var transactions = independentSpendFirst ? new[] { foreign, independentSpend, cancellation } : new[] { cancellation, independentSpend, foreign };
+
+		processor.Process(transactions);
+
+		Assert.Empty(processor.Coins);
+		Assert.Equal(Money.Zero, processor.Coins.GetTotalBalance());
+		Assert.Same(independentSpend, independentCoin.SpenderTransaction);
+		Assert.False(processor.IsAware(foreign.GetHash()));
+		Assert.DoesNotContain(txStore.GetTransactions(), transaction => transaction.GetHash() == child.GetHash() || transaction.GetHash() == parent.GetHash());
+	}
+
+	[Fact]
+	public async Task InvalidatedDescendantCanReuseItsOriginalTransactionObjectsAfterReorgAsync()
+	{
+		await using var txStore = await CreateTransactionStoreAsync();
+		var processor = CreateTransactionProcessor(txStore);
+		var independent = CreateCreditingTransaction(processor.NewKey("independent").P2wpkhScript, Money.Coins(1m), height: 100);
+		var parent = CreateCreditingTransaction(processor.NewKey("payment").P2wpkhScript, Money.Coins(0.5m));
+		processor.Process(independent, parent);
+		var child = CreateSpendingTransaction(
+			independent.Transaction.Outputs.AsCoins().Concat(parent.Transaction.Outputs.AsCoins()), processor.NewKey("child").P2wpkhScript, BitcoinFactory.CreateScript());
+		processor.Process(child);
+		var oldOutput = Assert.Single(child.WalletOutputs);
+		var oldParentOutput = Assert.Single(parent.WalletOutputs);
+		processor.Process(CreateConfirmedConflict(parent));
+		Assert.Empty(child.WalletInputs);
+		Assert.Empty(child.WalletOutputs);
+		Assert.Empty(parent.WalletOutputs);
+
+		processor.ForgetTransaction(parent.GetHash());
+		processor.ForgetTransaction(child.GetHash());
+		processor.Process(parent, child);
+
+		var output = Assert.Single(processor.Coins);
+		Assert.NotSame(oldOutput, output);
+		Assert.Same(output, Assert.Single(child.WalletOutputs));
+		var parentInput = Assert.Single(child.WalletInputs, coin => coin.TransactionId == parent.GetHash());
+		Assert.NotSame(oldParentOutput, parentInput);
+		Assert.Same(parentInput, Assert.Single(parent.WalletOutputs));
+		Assert.All(child.WalletInputs, coin => Assert.Same(child, coin.SpenderTransaction));
+		Assert.Equal(output.Amount, processor.Coins.GetTotalBalance());
+	}
+
+	[Fact]
+	public async Task ConfirmedConflictInvalidatesEachWalletSharingTheTransactionStoreAsync()
+	{
+		await using var txStore = await CreateTransactionStoreAsync();
+		var first = CreateTransactionProcessor(txStore);
+		var second = CreateTransactionProcessor(txStore);
+		var raw = CreateCreditingTransaction(first.NewKey("first").P2wpkhScript, Money.Coins(0.5m)).Transaction.Clone();
+		raw.Outputs.Add(Money.Coins(0.25m), second.NewKey("second").P2wpkhScript);
+		var payment = new SmartTransaction(raw, Height.Mempool);
+		first.Process(payment);
+		second.Process(payment);
+		var secondCoin = Assert.Single(second.Coins);
+		Assert.Equal(2, payment.WalletOutputs.Count);
+		var cancellation = CreateConfirmedConflict(payment);
+
+		first.Process(cancellation);
+
+		Assert.Empty(first.Coins);
+		Assert.Same(secondCoin, Assert.Single(payment.WalletOutputs));
+		Assert.Equal(Money.Coins(0.25m), second.Coins.GetTotalBalance());
+		Assert.False(txStore.MempoolStore.Contains(payment.GetHash()));
+		var result = second.Process(cancellation);
+		Assert.Same(secondCoin, Assert.Single(result.SuccessfullyDoubleSpentCoins));
+		Assert.Empty(second.Coins);
+		Assert.Empty(payment.WalletOutputs);
+		Assert.Equal(Money.Zero, first.Coins.GetTotalBalance());
+		Assert.Equal(Money.Zero, second.Coins.GetTotalBalance());
+	}
+
+	[Fact]
+	public async Task ConfirmedConflictRawArchiveIsInactiveAndRemovedOnLegitimateConfirmationAsync()
+	{
+		await using var txStore = await CreateTransactionStoreAsync();
+		var processor = CreateTransactionProcessor(txStore);
+		var receiveKey = processor.NewKey("payment");
+		var raw = CreateCreditingTransaction(receiveKey.P2wpkhScript, Money.Coins(0.5m)).Transaction;
+		var firstSeen = DateTimeOffset.FromUnixTimeSeconds(1_700_000_000);
+		var payment = new SmartTransaction(raw, Height.Mempool, labels: new LabelsArray("archive metadata"),
+			isReplacement: true, isSpeedup: true, isCancellation: true, firstSeen: firstSeen);
+		processor.Process(payment);
+		processor.Process(CreateConfirmedConflict(payment));
+		Assert.True(txStore.InvalidatedTransactions.Contains(payment.GetHash()));
+		Assert.Empty(txStore.GetTransactions());
+		Assert.False(txStore.Contains(payment.GetHash()));
+		Assert.True(txStore.TryGetTransaction(payment.GetHash(), out var historical));
+		Assert.NotSame(payment, historical);
+		Assert.Empty(historical.WalletOutputs);
+		Assert.Equal(payment.Labels, historical.Labels);
+		Assert.Equal(firstSeen, historical.FirstSeen);
+		Assert.True(historical.IsReplacement);
+		Assert.True(historical.IsSpeedup);
+		Assert.True(historical.IsCancellation);
+		historical.TryUpdate(new SmartTransaction(raw, new Height(102), RandomUtils.GetUInt256()));
+		_ = new SmartCoin(historical, 0, receiveKey);
+		Assert.True(txStore.InvalidatedTransactions.TryGetTransaction(payment.GetHash(), out var storedHistory));
+		Assert.False(storedHistory.Confirmed);
+		Assert.Empty(storedHistory.WalletOutputs);
+		Assert.True(txStore.TryGetTransaction(payment.GetHash(), out var secondLookup));
+		Assert.NotSame(historical, secondLookup);
+		Assert.False(secondLookup.Confirmed);
+		Assert.Empty(secondLookup.WalletOutputs);
+		Assert.Empty(txStore.ReleaseToMempoolFromBlock(RandomUtils.GetUInt256()));
+		Assert.True(txStore.MempoolStore.IsEmpty());
+
+		processor.Process(new SmartTransaction(payment.Transaction, new Height(102), RandomUtils.GetUInt256()));
+
+		Assert.False(txStore.InvalidatedTransactions.Contains(payment.GetHash()));
+		Assert.True(txStore.ConfirmedStore.Contains(payment.GetHash()));
+		Assert.Equal(Money.Coins(0.5m), processor.Coins.GetTotalBalance());
+	}
+
+	[Theory]
+	[InlineData(false, false)]
+	[InlineData(false, true)]
+	[InlineData(true, false)]
+	[InlineData(true, true)]
+	public async Task ConfirmedConflictInvalidatesChildOwnedOnlyByAnotherWalletAsync(bool parentWalletFirst, bool restart)
+	{
+		var directory = Path.Combine(TestDirectory.Get(), $"TransactionStore-{parentWalletFirst}-{restart}");
+		var txStore = new AllTransactionStore(directory, Network.RegTest);
+		try
+		{
+			await txStore.InitializeAsync();
+			var parentWallet = CreateTransactionProcessor(txStore);
+			var childWallet = CreateTransactionProcessor(txStore);
+			var parent = CreateCreditingTransaction(parentWallet.NewKey("parent").P2wpkhScript, Money.Coins(0.5m));
+			parentWallet.Process(parent);
+			var child = CreateSpendingTransaction(parent.Transaction.Outputs.AsCoins().Single(), childWallet.NewKey("child").P2wpkhScript);
+			parentWallet.Process(child);
+			childWallet.Process(child);
+			var cancellation = CreateConfirmedConflict(parent);
+			var first = parentWalletFirst ? parentWallet : childWallet;
+			var second = parentWalletFirst ? childWallet : parentWallet;
+
+			first.Process(cancellation);
+
+			Assert.Empty(first.Coins);
+			Assert.Equal(Money.Zero, first.Coins.GetTotalBalance());
+			Assert.Empty(txStore.GetTransactions());
+			Assert.True(txStore.InvalidatedTransactions.Contains(parent.GetHash()));
+			Assert.True(txStore.InvalidatedTransactions.Contains(child.GetHash()));
+			if (restart)
+			{
+				var keys = second.KeyManager;
+				await txStore.DisposeAsync();
+				txStore = new AllTransactionStore(directory, Network.RegTest);
+				await txStore.InitializeAsync();
+				Assert.Empty(txStore.GetTransactions());
+				Assert.True(txStore.InvalidatedTransactions.Contains(parent.GetHash()));
+				second = new TransactionProcessor(txStore, null, keys, Money.Coins(0.0001m));
+				// Restore the second wallet's own pending raws, as its journal does.
+				// A child-only wallet has no parent raw in its wallet journal.
+				if (!parentWalletFirst) { second.Process(new SmartTransaction(parent.Transaction, Height.Mempool)); }
+				second.Process(new SmartTransaction(child.Transaction, Height.Mempool));
+			}
+			var invalidatedHashes = new List<uint256>();
+			second.ConfirmedConflictDetected += (_, transactions) => invalidatedHashes.AddRange(transactions.Select(transaction => transaction.GetHash()));
+
+			second.Process(cancellation);
+
+			Assert.Contains(parent.GetHash(), invalidatedHashes);
+			Assert.Contains(child.GetHash(), invalidatedHashes);
+			Assert.Empty(second.Coins);
+			Assert.Equal(Money.Zero, second.Coins.GetTotalBalance());
+			Assert.Empty(txStore.GetTransactions());
+			Assert.False(txStore.Contains(parent.GetHash()));
+			Assert.False(txStore.Contains(child.GetHash()));
+		}
+		finally
+		{
+			await txStore.DisposeAsync();
+		}
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task FailedPendingJournalWritePreservesGraphAndAllowsP2pRetryAsync(bool replacement)
+	{
+		await using var txStore = await CreateTransactionStoreAsync();
+		var mempool = new MempoolService();
+		var keys = KeyManager.CreateNew(out _, "password", Network.Main);
+		var processor = new TransactionProcessor(txStore, mempool, keys, Money.Coins(0.0001m));
+		var payment = CreateCreditingTransaction(processor.NewKey("payment").P2wpkhScript, Money.Coins(0.5m));
+		SmartTransaction received = payment;
+		if (replacement)
+		{
+			processor.Process(payment);
+			var raw = Network.RegTest.CreateTransaction();
+			foreach (var input in payment.Transaction.Inputs) { raw.Inputs.Add(input.PrevOut, Script.Empty); }
+			raw.Outputs.Add(Money.Coins(0.4m), processor.NewKey("replacement").P2wpkhScript);
+			received = new SmartTransaction(raw, Height.Mempool);
+		}
+		var before = processor.Coins.ToArray();
+		Action<SmartTransaction> failure = _ => throw new IOException("Pending journal write failed.");
+		processor.UnconfirmedTransactionDetected += failure;
+		mempool.TransactionReceived += (_, transaction) => processor.Process(transaction);
+
+		Assert.Throws<IOException>(() => mempool.Process(received.Transaction));
+
+		Assert.Equal(before, processor.Coins.ToArray());
+		Assert.Equal(replacement ? Money.Coins(0.5m) : Money.Zero, processor.Coins.GetTotalBalance());
+		Assert.False(txStore.MempoolStore.Contains(received.GetHash()));
+		Assert.Empty(received.WalletOutputs);
+		Assert.False(processor.IsAware(received.GetHash()));
+		Assert.False(mempool.IsProcessed(received.GetHash()));
+		if (replacement)
+		{
+			Assert.Same(before.Single(), Assert.Single(payment.WalletOutputs));
+			Assert.True(txStore.MempoolStore.Contains(payment.GetHash()));
+		}
+		processor.UnconfirmedTransactionDetected -= failure;
+
+		mempool.Process(received.Transaction);
+
+		Assert.Single(processor.Coins);
+		Assert.Equal(replacement ? Money.Coins(0.4m) : Money.Coins(0.5m), processor.Coins.GetTotalBalance());
+		Assert.True(txStore.MempoolStore.Contains(received.GetHash()));
+		Assert.True(processor.IsAware(received.GetHash()));
+		Assert.True(mempool.IsProcessed(received.GetHash()));
+	}
+
+	[Fact]
+	public async Task FailedConflictJournalWritePreservesActivePaymentAndAllowsRetryAsync()
+	{
+		await using var txStore = await CreateTransactionStoreAsync();
+		var processor = CreateTransactionProcessor(txStore);
+		var payment = CreateCreditingTransaction(processor.NewKey("payment").P2wpkhScript, Money.Coins(0.5m));
+		processor.Process(payment);
+		var coin = Assert.Single(processor.Coins);
+		var cancellation = CreateConfirmedConflict(payment);
+		Action<SmartTransaction, IReadOnlyList<SmartTransaction>> failure = (_, _) => throw new IOException("Journal write failed.");
+		processor.ConfirmedConflictDetected += failure;
+
+		Assert.Throws<IOException>(() => processor.Process(cancellation));
+
+		Assert.False(processor.IsAware(cancellation.GetHash()));
+		Assert.Same(coin, Assert.Single(processor.Coins));
+		Assert.Same(coin, Assert.Single(payment.WalletOutputs));
+		Assert.True(txStore.MempoolStore.Contains(payment.GetHash()));
+		Assert.Equal(Money.Coins(0.5m), processor.Coins.GetTotalBalance());
+		processor.ConfirmedConflictDetected -= failure;
+		Assert.True(processor.Process(cancellation).IsNews);
+		Assert.Empty(processor.Coins);
+		Assert.Equal(Money.Zero, processor.Coins.GetTotalBalance());
+	}
+
+	private static SmartTransaction CreateConfirmedConflict(SmartTransaction payment)
+	{
+		using Key key = new();
+		var raw = Network.RegTest.CreateTransaction();
+		foreach (var input in payment.Transaction.Inputs)
+		{
+			raw.Inputs.Add(input.PrevOut, new Script(OpcodeType.OP_0, OpcodeType.OP_0));
+		}
+		raw.Outputs.Add(Money.Coins(0.4m), key.PubKey.Hash.ScriptPubKey);
+		return new SmartTransaction(raw, new Height(101), blockHash: RandomUtils.GetUInt256());
 	}
 
 	private static SmartTransaction CreateSpendingTransaction(Coin coin, Script? scriptPubKey = null, int height = 0)

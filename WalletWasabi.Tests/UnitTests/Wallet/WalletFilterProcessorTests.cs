@@ -7,6 +7,9 @@ using Moq;
 using NBitcoin;
 using WalletWasabi.Backend.Models;
 using WalletWasabi.Blockchain.Blocks;
+using WalletWasabi.Blockchain.Keys;
+using WalletWasabi.Blockchain.TransactionProcessing;
+using WalletWasabi.Blockchain.Transactions;
 using WalletWasabi.Stores;
 using WalletWasabi.Tests.TestCommon;
 using WalletWasabi.Wallets;
@@ -29,9 +32,13 @@ public class WalletFilterProcessorTests
 	{
 		SmartHeaderChain headerChain = new();
 		await using IndexStore indexStore = new(TestDirectory.Get(), Network.RegTest, headerChain);
+		await using AllTransactionStore transactionStore = new(SqliteStorageHelper.InMemoryDatabase, Network.RegTest);
+		await transactionStore.InitializeAsync();
+		var keyManager = KeyManager.CreateNew(out _, "", Network.RegTest);
+		var transactionProcessor = new TransactionProcessor(transactionStore, null, keyManager, Money.Zero);
 		BitcoinStore bitcoinStore = new(indexStore, null!, null!, headerChain, null!);
 		using BlockDownloadService blockDownloadService = new(Mock.Of<IFileSystemBlockRepository>(), [], p2pBlockProvider: null);
-		using WalletFilterProcessor processor = new(null!, bitcoinStore, null!, blockDownloadService);
+		using WalletFilterProcessor processor = new(keyManager, bitcoinStore, transactionProcessor, blockDownloadService);
 		var request = processor.ProcessAsync(CancellationToken.None);
 
 		await processor.StartAsync(new CancellationToken(canceled: true));

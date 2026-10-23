@@ -21,27 +21,34 @@ public class AllTransactionStore : ITransactionStore, IAsyncDisposable
 
 		string mempoolStoreDataSource;
 		string confirmedStoreDataSource;
+		string invalidatedStoreDataSource;
 
 		if (dataSource == SqliteStorageHelper.InMemoryDatabase)
 		{
 			mempoolStoreDataSource = SqliteStorageHelper.InMemoryDatabase;
 			confirmedStoreDataSource = SqliteStorageHelper.InMemoryDatabase;
+			invalidatedStoreDataSource = SqliteStorageHelper.InMemoryDatabase;
 		}
 		else
 		{
 			IoHelpers.EnsureDirectoryExists(WorkFolderPath);
 			mempoolStoreDataSource = Path.Combine(WorkFolderPath, "Mempool");
 			confirmedStoreDataSource = Path.Combine(WorkFolderPath, "ConfirmedTransactions", Constants.ConfirmedTransactionsVersion);
+			invalidatedStoreDataSource = Path.Combine(WorkFolderPath, "InvalidatedTransactions");
 		}
 
 		MempoolStore = new TransactionStore(workFolderPath: mempoolStoreDataSource, network);
 		ConfirmedStore = new TransactionStore(workFolderPath: confirmedStoreDataSource, network);
+		InvalidatedTransactions = new TransactionStore(workFolderPath: invalidatedStoreDataSource, network);
 	}
 
 	private string WorkFolderPath { get; }
 
 	public TransactionStore MempoolStore { get; }
 	public TransactionStore ConfirmedStore { get; }
+	/// <summary>Historical raw transactions used to prove ancestry across wallets after a confirmed conflict.</summary>
+	/// <remarks>These transactions are excluded from the active transaction set.</remarks>
+	internal TransactionStore InvalidatedTransactions { get; }
 	private object Lock { get; } = new();
 
 	public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -49,7 +56,8 @@ public class AllTransactionStore : ITransactionStore, IAsyncDisposable
 		var initTasks = new[]
 		{
 			MempoolStore.InitializeAsync($"{nameof(MempoolStore)}.{nameof(MempoolStore.InitializeAsync)}", cancellationToken),
-			ConfirmedStore.InitializeAsync($"{nameof(ConfirmedStore)}.{nameof(ConfirmedStore.InitializeAsync)}", cancellationToken)
+			ConfirmedStore.InitializeAsync($"{nameof(ConfirmedStore)}.{nameof(ConfirmedStore.InitializeAsync)}", cancellationToken),
+			InvalidatedTransactions.InitializeAsync($"{nameof(InvalidatedTransactions)}.{nameof(InvalidatedTransactions.InitializeAsync)}", cancellationToken)
 		};
 
 		await Task.WhenAll(initTasks).ConfigureAwait(false);
@@ -73,6 +81,7 @@ public class AllTransactionStore : ITransactionStore, IAsyncDisposable
 				{
 					ConfirmedStore.TryAddOrUpdate(tx);
 				}
+				InvalidatedTransactions.TryRemove(hash, out _);
 			}
 			else
 			{
@@ -93,12 +102,14 @@ public class AllTransactionStore : ITransactionStore, IAsyncDisposable
 			// Do Contains first, because it's fast.
 			if (ConfirmedStore.TryUpdate(tx))
 			{
+				InvalidatedTransactions.TryRemove(hash, out _);
 				return true;
 			}
 			else if (tx.Confirmed && MempoolStore.TryRemove(hash, out SmartTransaction? originalTx))
 			{
 				originalTx.TryUpdate(tx);
 				ConfirmedStore.TryAddOrUpdate(originalTx);
+				InvalidatedTransactions.TryRemove(hash, out _);
 				return true;
 			}
 			else if (MempoolStore.TryUpdate(tx))
@@ -125,6 +136,10 @@ public class AllTransactionStore : ITransactionStore, IAsyncDisposable
 					ConfirmedStore.TryAddOrUpdate(uTx);
 				}
 			}
+			foreach (var txid in InvalidatedTransactions.GetTransactionHashes().Where(ConfirmedStore.Contains))
+			{
+				InvalidatedTransactions.TryRemove(txid, out _);
+			}
 		}
 	}
 
@@ -132,12 +147,28 @@ public class AllTransactionStore : ITransactionStore, IAsyncDisposable
 	{
 		lock (Lock)
 		{
-			if (MempoolStore.TryGetTransaction(hash, out sameStx))
+			if (TryGetActiveTransaction(hash, out sameStx))
 			{
 				return true;
 			}
+			if (InvalidatedTransactions.TryGetTransaction(hash, out var historical))
+			{
+				// Callers may update heights or wallet annotations. Historical graph
+				// evidence must remain independent of those active objects.
+				sameStx = new SmartTransaction(historical.Transaction.Clone(), historical.Height, historical.BlockHash,
+					historical.BlockIndex, historical.Labels, historical.IsReplacement, historical.IsSpeedup,
+					historical.IsCancellation, historical.FirstSeen);
+				return true;
+			}
+			return false;
+		}
+	}
 
-			return ConfirmedStore.TryGetTransaction(hash, out sameStx);
+	internal bool TryGetActiveTransaction(uint256 hash, [NotNullWhen(true)] out SmartTransaction? transaction)
+	{
+		lock (Lock)
+		{
+			return MempoolStore.TryGetTransaction(hash, out transaction) || ConfirmedStore.TryGetTransaction(hash, out transaction);
 		}
 	}
 
@@ -210,5 +241,6 @@ public class AllTransactionStore : ITransactionStore, IAsyncDisposable
 	{
 		await MempoolStore.DisposeAsync().ConfigureAwait(false);
 		await ConfirmedStore.DisposeAsync().ConfigureAwait(false);
+		await InvalidatedTransactions.DisposeAsync().ConfigureAwait(false);
 	}
 }

@@ -29,6 +29,10 @@ public class TransactionProcessor
 	}
 
 	public event EventHandler<ProcessedResult>? WalletRelevantTransactionProcessed;
+	/// <summary>Persists invalidated transactions before a confirmed conflict changes active state.</summary>
+	public event Action<SmartTransaction, IReadOnlyList<SmartTransaction>>? ConfirmedConflictDetected;
+	public event Action<SmartTransaction>? UnconfirmedTransactionDetected;
+	public Func<uint256, bool>? IsInvalidatedTransaction { get; set; }
 
 	/// <remarks>Intentionally, <c>static</c> to avoid modifying smart transactions from multiple threads.</remarks>
 	public static object Lock { get; } = new();
@@ -49,9 +53,15 @@ public class TransactionProcessor
 
 		lock (Lock)
 		{
-			foreach (var tx in txs)
+			var transactions = txs.ToArray();
+			// Full block scans can contain thousands of foreign transactions. The
+			// pending ancestry is unchanged by an all-confirmed batch, so index it once.
+			var conflicts = transactions.Length != 0 && transactions.All(transaction => transaction.Confirmed)
+				? BuildConfirmedConflictGraph()
+				: null;
+			foreach (var tx in transactions)
 			{
-				rets.Add(ProcessNoLock(tx));
+				rets.Add(ProcessAndRememberNoLock(tx, remember: false, conflicts));
 			}
 		}
 
@@ -77,13 +87,21 @@ public class TransactionProcessor
 		}
 	}
 
+	public void ForgetTransaction(uint256 tx)
+	{
+		lock (Lock)
+		{
+			Aware.Remove(tx);
+			MempoolService?.ForgetTransaction(tx);
+		}
+	}
+
 	public ProcessedResult Process(SmartTransaction tx)
 	{
 		ProcessedResult ret;
 		lock (Lock)
 		{
-			Aware.Add(tx.GetHash());
-			ret = ProcessNoLock(tx);
+			ret = ProcessAndRememberNoLock(tx);
 		}
 		if (ret.IsNews)
 		{
@@ -92,12 +110,47 @@ public class TransactionProcessor
 		return ret;
 	}
 
-	private ProcessedResult ProcessNoLock(SmartTransaction tx)
+	private ProcessedResult ProcessAndRememberNoLock(SmartTransaction tx, bool remember = true, ConfirmedConflictGraph? conflicts = null)
+	{
+		try
+		{
+			var result = ProcessNoLock(tx, conflicts);
+			// Archived transactions must stay eligible for rediscovery after a reorg.
+			if (remember && (tx.Confirmed || IsInvalidatedTransaction?.Invoke(tx.GetHash()) is not true))
+			{
+				Aware.Add(tx.GetHash());
+			}
+			return result;
+		}
+		catch
+		{
+			// A failed persistence write must allow the same P2P transaction to retry.
+			ForgetTransaction(tx.GetHash());
+			throw;
+		}
+	}
+
+	private void RecordUnconfirmedBeforeMutation(SmartTransaction tx)
+	{
+		if (!tx.Confirmed && (Coins.GetMyInputs(tx).Count != 0
+			|| tx.Transaction.Outputs.Any(output => KeyManager.TryGetKeyForScriptPubKey(output.ScriptPubKey, out _))))
+		{
+			UnconfirmedTransactionDetected?.Invoke(tx);
+		}
+	}
+
+	private ProcessedResult ProcessNoLock(SmartTransaction tx, ConfirmedConflictGraph? conflicts)
 	{
 		var result = new ProcessedResult(tx);
+		if (!tx.Confirmed && IsInvalidatedTransaction?.Invoke(tx.GetHash()) is true)
+		{
+			Aware.Remove(tx.GetHash());
+			return result;
+		}
 
-		// We do not care about non-witness transactions for other than mempool cleanup.
-		if (!tx.Transaction.SegWitInvolved())
+		// A confirmed non-witness transaction can invalidate an incoming witness payment
+		// by spending its external inputs, even when it has no output for this wallet.
+		if (!tx.Confirmed && !tx.Transaction.SegWitInvolved())
 		{
 			return result;
 		}
@@ -113,7 +166,7 @@ public class TransactionProcessor
 			result = new ProcessedResult(tx);
 		}
 
-		if (TransactionStore.TryGetTransaction(txId, out var foundTx))
+		if (TransactionStore.TryGetActiveTransaction(txId, out var foundTx))
 		{
 			foundTx.TryUpdate(tx);
 			tx = foundTx;
@@ -137,12 +190,25 @@ public class TransactionProcessor
 				}
 			}
 
-			var doubleSpentTransactions = doubleSpentCoins.Select(x => x.SpenderTransaction!).Concat(doubleSpentSpenders.Select(x => x.Transaction)).ToHashSet();
+			var doubleSpentTransactions = doubleSpentCoins.Select(x => x.SpenderTransaction!).Concat(doubleSpentSpenders.Select(x => x.Transaction))
+				.Where(transaction => transaction.GetHash() != txId).ToHashSet();
+			if (tx.Confirmed)
+			{
+				conflicts ??= BuildConfirmedConflictGraph();
+				foreach (var input in tx.Transaction.Inputs)
+				{
+					if (conflicts.RootsByInput.TryGetValue(input.PrevOut, out var roots))
+					{
+						doubleSpentTransactions.UnionWith(roots.Where(root => !root.Confirmed && root.GetHash() != txId));
+					}
+				}
+			}
 
 			if (doubleSpentTransactions.Count > 0)
 			{
 				tx.SetReplacement();
 			}
+			RecordUnconfirmedBeforeMutation(tx);
 
 			if (tx.Height == Height.Mempool)
 			{
@@ -164,27 +230,7 @@ public class TransactionProcessor
 			}
 			else // new confirmation always enjoys priority
 			{
-				foreach (var doubleSpentTx in doubleSpentTransactions)
-				{
-					var unconfirmedDoubleSpentTxId = doubleSpentTx.GetHash();
-					if (TransactionStore.MempoolStore.TryGetTransaction(unconfirmedDoubleSpentTxId, out var replacedTx) && replacedTx.IsReplacement)
-					{
-						var (replaced, restored) = Coins.Undo(unconfirmedDoubleSpentTxId);
-
-						result.ReplacedCoins.AddRange(replaced);
-						result.RestoredCoins.AddRange(restored);
-					}
-					else
-					{
-						// remove double spent spenders recursively (if other coin spends it, remove that too and so on), will add later if they came to our keys
-						foreach (var doubleSpentTxid in doubleSpentSpenders.Select(x => x.TransactionId).Distinct())
-						{
-							Coins.Undo(doubleSpentTxid);
-						}
-
-						result.SuccessfullyDoubleSpentCoins.AddRange(doubleSpentSpenders);
-					}
-				}
+				InvalidateConfirmedConflicts(tx, doubleSpentTransactions, result, conflicts!);
 			}
 
 			// Recursively double spent transactions could be here.
@@ -197,6 +243,10 @@ public class TransactionProcessor
 			{
 				TransactionStore.MempoolStore.TryRemove(replacedTransactionId, out _);
 			}
+		}
+		else
+		{
+			RecordUnconfirmedBeforeMutation(tx);
 		}
 
 		IReadOnlyList<SmartCoin> myInputs = Coins.GetMyInputs(tx);
@@ -309,6 +359,98 @@ public class TransactionProcessor
 		BlockchainAnalyzer.Analyze(result.Transaction);
 
 		return result;
+	}
+
+	private SmartTransaction[] GetConflictCandidates()
+	{
+		var allCoins = Coins.AsAllCoinsView().ToArray();
+		return TransactionStore.MempoolStore.GetTransactions()
+			.Concat(allCoins.Select(coin => coin.Transaction))
+			.Concat(allCoins.Where(coin => coin.SpenderTransaction is not null).Select(coin => coin.SpenderTransaction!))
+			.Concat(TransactionStore.InvalidatedTransactions.GetTransactions())
+			.Where(transaction => !transaction.Confirmed && !TransactionStore.ConfirmedStore.Contains(transaction.GetHash()))
+			.DistinctBy(transaction => transaction.GetHash())
+			.ToArray();
+	}
+
+	private ConfirmedConflictGraph BuildConfirmedConflictGraph()
+	{
+		var candidates = GetConflictCandidates().ToDictionary(transaction => transaction.GetHash());
+		var ancestors = new HashSet<uint256>();
+		void Visit(SmartTransaction transaction)
+		{
+			if (!ancestors.Add(transaction.GetHash())) { return; }
+			foreach (var input in transaction.Transaction.Inputs)
+			{
+				if (candidates.TryGetValue(input.PrevOut.Hash, out var parent)) { Visit(parent); }
+			}
+		}
+		foreach (var coin in Coins.AsAllCoinsView())
+		{
+			if (!coin.Transaction.Confirmed) { Visit(coin.Transaction); }
+			if (coin.SpenderTransaction is { Confirmed: false } spender) { Visit(spender); }
+		}
+		var rootsByInput = candidates.Values.Where(candidate => ancestors.Contains(candidate.GetHash()))
+			.SelectMany(transaction => transaction.Transaction.Inputs.Select(input => (input.PrevOut, Transaction: transaction)))
+			.GroupBy(item => item.PrevOut).ToDictionary(group => group.Key, group => group.Select(item => item.Transaction).Distinct().ToArray());
+		var childrenByParent = candidates.Values
+			.SelectMany(transaction => transaction.Transaction.Inputs.Select(input => input.PrevOut.Hash).Distinct().Select(parent => (Parent: parent, Transaction: transaction)))
+			.GroupBy(item => item.Parent).ToDictionary(group => group.Key, group => group.Select(item => item.Transaction).ToArray());
+		return new ConfirmedConflictGraph(rootsByInput, childrenByParent);
+	}
+
+	private sealed record ConfirmedConflictGraph(Dictionary<OutPoint, SmartTransaction[]> RootsByInput, Dictionary<uint256, SmartTransaction[]> ChildrenByParent);
+
+	private void InvalidateConfirmedConflicts(SmartTransaction confirmed, HashSet<SmartTransaction> conflicts, ProcessedResult result, ConfirmedConflictGraph graph)
+	{
+		// Include local registry objects: another wallet sharing the store may already
+		// have removed the same transactions before this processor sees the block.
+		var invalidated = new List<SmartTransaction>();
+		var visited = new HashSet<uint256>();
+		void Visit(SmartTransaction transaction)
+		{
+			var id = transaction.GetHash();
+			if (transaction.Confirmed || !visited.Add(id)) { return; }
+			if (graph.ChildrenByParent.TryGetValue(id, out var children))
+			{
+				foreach (var child in children) { Visit(child); }
+			}
+			invalidated.Add(transaction);
+		}
+		foreach (var conflict in conflicts.ToArray()) { Visit(conflict); }
+		if (invalidated.Count == 0) { return; }
+
+		ConfirmedConflictDetected?.Invoke(confirmed, invalidated);
+		foreach (var transaction in invalidated)
+		{
+			// Keep independent raw copies: active SmartTransaction objects can later
+			// confirm or be reused by another wallet or by the broadcast store.
+			var archived = new SmartTransaction(transaction.Transaction.Clone(), Height.Mempool, labels: transaction.Labels,
+				isReplacement: transaction.IsReplacement, isSpeedup: transaction.IsSpeedup,
+				isCancellation: transaction.IsCancellation, firstSeen: transaction.FirstSeen);
+			TransactionStore.InvalidatedTransactions.TryAddOrUpdate(archived);
+		}
+		foreach (var transaction in invalidated)
+		{
+			// Undo children first: their independent wallet inputs must become available
+			// again before removing outputs of the invalidated parent transaction.
+			var (removed, restored) = Coins.Undo(transaction.GetHash());
+			foreach (var coin in removed)
+			{
+				coin.Transaction.TryRemoveWalletOutput(coin);
+			}
+			foreach (var coin in restored)
+			{
+				transaction.TryRemoveWalletInput(coin);
+			}
+			if (transaction.IsReplacement) { result.ReplacedCoins.AddRange(removed); }
+			else { result.SuccessfullyDoubleSpentCoins.AddRange(removed); }
+			result.RestoredCoins.AddRange(restored);
+			Aware.Remove(transaction.GetHash());
+			conflicts.Add(transaction);
+		}
+		var removedOutpoints = result.ReplacedCoins.Concat(result.SuccessfullyDoubleSpentCoins).Select(coin => coin.Outpoint).ToHashSet();
+		result.RestoredCoins.RemoveAll(coin => removedOutpoints.Contains(coin.Outpoint));
 	}
 
 	private bool CanBeConsideredDustAttack(TxOut output, HdPubKey hdPubKey, bool weAreAmongTheSender) =>
