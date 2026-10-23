@@ -147,6 +147,14 @@ public class MempoolService
 		}
 	}
 
+	public void ForgetTransaction(uint256 txid)
+	{
+		lock (ProcessedLock)
+		{
+			ProcessedTransactionHashes.Remove(txid);
+		}
+	}
+
 	public void Process(Transaction tx)
 	{
 		SmartTransaction? txAdded = null;
