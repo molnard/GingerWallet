@@ -7,6 +7,7 @@ using WalletWasabi.Backend.Models;
 using WalletWasabi.Blockchain.BlockFilters;
 using WalletWasabi.Blockchain.Blocks;
 using WalletWasabi.Extensions;
+using Xunit;
 
 namespace WalletWasabi.Tests.UnitTests.Wallet;
 
@@ -112,6 +113,13 @@ public class MockNode
 			block.AddTransaction(tx);
 		}
 		Mempool.Clear();
+		block.UpdateMerkleRoot();
+		block.Header.Bits = Network.Consensus.PowLimit;
+		while (!block.Header.CheckProofOfWork())
+		{
+			block.Header.Nonce++;
+		}
+		Assert.True(block.Check(), "Mock blocks must satisfy the same integrity check as downloaded blocks.");
 		BlockChain.Add(block.GetHash(), block);
 		return block;
 	}
