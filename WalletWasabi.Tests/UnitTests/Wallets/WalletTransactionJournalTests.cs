@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading.Tasks;
 using WalletWasabi.Blockchain.Analysis.Clustering;
 using WalletWasabi.Blockchain.Keys;
 using WalletWasabi.Blockchain.Transactions;
@@ -32,6 +33,26 @@ public sealed class WalletTransactionJournalTests : IDisposable
 		Assert.Empty(reloaded.GetPendingThrough(99));
 		Assert.Equal(transaction.GetHash(), Assert.Single(reloaded.GetPendingThrough(100)));
 		AssertTransaction(transaction, Assert.Single(reloaded.PendingTransactions));
+	}
+
+	[Fact]
+	public async Task ConcurrentWalletWritesPreservePendingStateAsync()
+	{
+		var keys = CreateKeys();
+		var journal = new WalletTransactionJournal(keys);
+		var pending = Enumerable.Range(0, 10).Select(_ => CreateTransaction(keys)).ToArray();
+		var record = Task.Run(() =>
+		{
+			foreach (var transaction in pending) { journal.RecordPending(transaction, 100); }
+		});
+		var save = Task.Run(() =>
+		{
+			for (var i = 0; i < 30; i++) { keys.ToFile(); }
+		});
+
+		await Task.WhenAll(record, save).WaitAsync(TimeSpan.FromSeconds(30));
+
+		Assert.Equal(pending.Select(x => x.GetHash()), Reload(keys).PendingTransactions.Select(x => x.GetHash()));
 	}
 
 	[Fact]

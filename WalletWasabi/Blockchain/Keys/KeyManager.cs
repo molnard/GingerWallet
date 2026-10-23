@@ -704,15 +704,14 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 
 	public void ToFile(string filePath)
 	{
-		string jsonString = string.Empty;
-		string jsonStringAttributes = string.Empty;
-
 		lock (CriticalStateLock)
 		{
-			jsonString = JsonSerializer.Serialize(this, JsonOptions);
-			jsonStringAttributes = JsonSerializer.Serialize(Attributes, JsonOptions);
+			WriteToFile(filePath, JsonSerializer.Serialize(this, JsonOptions), JsonSerializer.Serialize(Attributes, JsonOptions));
 		}
+	}
 
+	private void WriteToFile(string filePath, string jsonString, string jsonStringAttributes)
+	{
 		IoHelpers.EnsureContainingDirectoryExists(filePath);
 
 		SafeIoManager safeIoManager = new(filePath);
