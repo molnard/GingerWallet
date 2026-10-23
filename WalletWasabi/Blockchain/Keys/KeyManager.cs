@@ -682,17 +682,36 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 		}
 	}
 
-	public void ToFile(string filePath)
-	{
-		string jsonString = string.Empty;
-		string jsonStringAttributes = string.Empty;
+	internal WalletTransactionJournal.Journal TransactionJournal => BlockchainState.TransactionJournal;
 
+	internal void SetTransactionJournal(WalletTransactionJournal.Journal journal)
+	{
 		lock (CriticalStateLock)
 		{
-			jsonString = JsonSerializer.Serialize(this, JsonOptions);
-			jsonStringAttributes = JsonSerializer.Serialize(Attributes, JsonOptions);
+			var previous = BlockchainState.TransactionJournal;
+			BlockchainState.TransactionJournal = journal;
+			try
+			{
+				ToFile();
+			}
+			catch
+			{
+				BlockchainState.TransactionJournal = previous;
+				throw;
+			}
 		}
+	}
 
+	public void ToFile(string filePath)
+	{
+		lock (CriticalStateLock)
+		{
+			WriteToFile(filePath, JsonSerializer.Serialize(this, JsonOptions), JsonSerializer.Serialize(Attributes, JsonOptions));
+		}
+	}
+
+	private void WriteToFile(string filePath, string jsonString, string jsonStringAttributes)
+	{
 		IoHelpers.EnsureContainingDirectoryExists(filePath);
 
 		SafeIoManager safeIoManager = new(filePath);
@@ -839,6 +858,7 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 			if (lastNetwork is null || lastNetwork != expectedNetwork)
 			{
 				BlockchainState.Network = expectedNetwork;
+				BlockchainState.TransactionJournal = new();
 				SetBestHeights(0);
 
 				if (lastNetwork is { })
