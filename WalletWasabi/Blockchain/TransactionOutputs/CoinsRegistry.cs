@@ -296,6 +296,9 @@ public class CoinsRegistry : ICoinsView
 			{
 				toRemove.AddRange(RemoveNoLock(createdCoin));
 			}
+			// An outgoing transaction can have no wallet outputs, so RemoveNoLock may
+			// never run. Its debit must still disappear when its inputs are restored.
+			TransactionAmountsByTxid.Remove(txId);
 
 			// destroyed (spent) coins are now (unspent)
 			foreach (SmartCoin destroyedCoin in allCoins.SpentBy(txId))
