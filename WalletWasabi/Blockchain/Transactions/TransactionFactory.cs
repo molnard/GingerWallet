@@ -103,7 +103,8 @@ public class TransactionFactory
 		builder.StandardTransactionPolicy.MinRelayTxFee = Constants.MinRelayFeeRate;
 		builder.SetCoinSelector(new SmartCoinSelector(allowedSmartCoinInputs));
 		builder.AddCoins(allowedSmartCoinInputs.Select(c => c.Coin));
-		builder.SetLockTime(lockTimeSelector());
+		var lockTime = lockTimeSelector();
+		builder.SetLockTime(lockTime);
 
 		foreach (var request in payments.Requests.Where(x => x.Amount.Type == MoneyRequestType.Value))
 		{
@@ -153,7 +154,42 @@ public class TransactionFactory
 			builder.SendFees(Money.Satoshis(1));
 		}
 
-		var psbt = builder.BuildPSBT(false);
+		PSBT psbt;
+		try
+		{
+			psbt = builder.BuildPSBT(false);
+		}
+		catch (InsufficientBalanceException) when (payments.ChangeStrategy == ChangeStrategy.Auto &&
+			payments.Requests.All(request => request.Amount.Type == MoneyRequestType.Value && !request.Amount.SubtractFee))
+		{
+			// The fee estimator initially includes change. An exact payment may
+			// therefore fail even though its transaction needs no change output.
+			var available = Money.Satoshis(allowedSmartCoinInputs.Sum(coin => coin.Amount.Satoshi));
+			var exactFee = available - payments.TotalAmount;
+			if (exactFee <= Money.Zero)
+			{
+				throw;
+			}
+
+			var exactBuilder = Network.CreateTransactionBuilder();
+			exactBuilder.StandardTransactionPolicy.MinRelayTxFee = Constants.MinRelayFeeRate;
+			exactBuilder.SetCoinSelector(new SmartCoinSelector(allowedSmartCoinInputs));
+			exactBuilder.AddCoins(allowedSmartCoinInputs.Select(coin => coin.Coin));
+			exactBuilder.SetLockTime(lockTime);
+			foreach (var request in payments.Requests)
+			{
+				exactBuilder.Send(request.Destination, request.Amount.Amount!);
+			}
+			exactBuilder.SetChange(changeScript);
+			exactBuilder.SendFees(exactFee);
+			var exactPsbt = exactBuilder.BuildPSBT(false);
+			if (!exactPsbt.TryGetVirtualSize(out var exactSize) || exactFee.Satoshi < Math.Ceiling(parameters.FeeRate.SatoshiPerByte * exactSize))
+			{
+				throw;
+			}
+			builder = exactBuilder;
+			psbt = exactPsbt;
+		}
 
 		var spentCoins = psbt.Inputs.Select(txin => allowedSmartCoinInputs.First(y => y.Outpoint == txin.PrevOut)).ToArray();
 
