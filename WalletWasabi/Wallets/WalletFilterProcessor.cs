@@ -10,6 +10,7 @@ using WalletWasabi.Blockchain.Keys;
 using WalletWasabi.Blockchain.TransactionProcessing;
 using WalletWasabi.Blockchain.Transactions;
 using WalletWasabi.Filter;
+using WalletWasabi.Extensions;
 using WalletWasabi.Logging;
 using WalletWasabi.Models;
 using WalletWasabi.Services.Terminate;
@@ -120,10 +121,7 @@ public class WalletFilterProcessor : BackgroundService
 				if (filters[0].Header.BlockHash.ToString() != conflict.BlockHash)
 				{
 					var canonical = filters[0];
-					var block = await KeepTryingToGetBlockAsync(canonical.Header.BlockHash, new Priority(conflict.Height), cancellationToken).ConfigureAwait(false);
-					var current = await BitcoinStore.IndexStore.FetchBatchAsync(conflict.Height, 1, cancellationToken).ConfigureAwait(false);
-					if (block.GetHash() != canonical.Header.BlockHash || !block.Check() || current.Length == 0
-						|| current[0].Header.Height != conflict.Height || current[0].Header.BlockHash != canonical.Header.BlockHash)
+					if (await GetCanonicalBlockAsync(canonical, cancellationToken).ConfigureAwait(false) is null)
 					{
 						throw new InvalidOperationException("The active chain changed while verifying a wallet conflict.");
 					}
@@ -176,13 +174,10 @@ public class WalletFilterProcessor : BackgroundService
 
 	private void ProcessInDependencyOrder(IEnumerable<SmartTransaction> transactions)
 	{
-		// Parents have to be present before their descendants restore wallet inputs.
-		var remaining = transactions.ToList();
-		while (remaining.Count > 0)
+		var byId = transactions.ToDictionary(transaction => transaction.GetHash());
+		foreach (var transaction in byId.Values.Select(x => x.Transaction).ToDependencyGraph().OrderByDependency())
 		{
-			var next = remaining.First(x => x.Transaction.Inputs.All(i => remaining.All(t => t.GetHash() != i.PrevOut.Hash)));
-			TransactionProcessor.Process(next);
-			remaining.Remove(next);
+			TransactionProcessor.Process(byId[transaction.GetHash()]);
 		}
 	}
 
@@ -396,10 +391,8 @@ public class WalletFilterProcessor : BackgroundService
 		}
 		if (reorgedConflicts.Length > 0)
 		{
-			currentBlock = await KeepTryingToGetBlockAsync(filter.Header.BlockHash, new Priority(filter.Header.Height), cancel).ConfigureAwait(false);
-			var canonical = await BitcoinStore.IndexStore.FetchBatchAsync(filter.Header.Height, 1, cancel).ConfigureAwait(false);
-			if (currentBlock.GetHash() != filter.Header.BlockHash || !currentBlock.Check() || canonical.Length == 0
-				|| canonical[0].Header.Height != filter.Header.Height || canonical[0].Header.BlockHash != filter.Header.BlockHash)
+			currentBlock = await GetCanonicalBlockAsync(filter, cancel).ConfigureAwait(false);
+			if (currentBlock is null)
 			{
 				return null;
 			}
@@ -420,9 +413,8 @@ public class WalletFilterProcessor : BackgroundService
 		// A confirmed replacement can spend only foreign inputs and pay no wallet script. The ordinary receive filter cannot find it.
 		if (matchFound || pending.Length > 0)
 		{
-			currentBlock ??= await KeepTryingToGetBlockAsync(filter.Header.BlockHash, new Priority(filter.Header.Height), cancel).ConfigureAwait(false);
-			var canonical = await BitcoinStore.IndexStore.FetchBatchAsync(filter.Header.Height, 1, cancel).ConfigureAwait(false);
-			if (currentBlock.GetHash() != filter.Header.BlockHash || !currentBlock.Check() || canonical.Length == 0 || canonical[0].Header.BlockHash != filter.Header.BlockHash)
+			currentBlock ??= await GetCanonicalBlockAsync(filter, cancel).ConfigureAwait(false);
+			if (currentBlock is null)
 			{
 				return null;
 			}
@@ -445,6 +437,15 @@ public class WalletFilterProcessor : BackgroundService
 			LastProcessedFilter = filter;
 		}
 		return matchFound;
+	}
+
+	private async Task<Block?> GetCanonicalBlockAsync(FilterModel filter, CancellationToken cancellationToken)
+	{
+		var block = await KeepTryingToGetBlockAsync(filter.Header.BlockHash, new Priority(filter.Header.Height), cancellationToken).ConfigureAwait(false);
+		var current = await BitcoinStore.IndexStore.FetchBatchAsync(filter.Header.Height, 1, cancellationToken).ConfigureAwait(false);
+		return block.GetHash() == filter.Header.BlockHash && block.Check() && current.Length > 0
+			&& current[0].Header.Height == filter.Header.Height && current[0].Header.BlockHash == filter.Header.BlockHash
+			? block : null;
 	}
 
 	private async void ReorgedAsync(object? sender, FilterModel invalidFilter)

@@ -26,12 +26,30 @@ public sealed class WalletTransactionJournalTests : IDisposable
 		journal.RecordPending(transaction, 100);
 		journal.RecordPending(transaction, 150);
 
-		var reloaded = new WalletTransactionJournal(keys);
+		var reloaded = Reload(keys);
 
 		Assert.Equal(100u, reloaded.NextScanHeight);
 		Assert.Empty(reloaded.GetPendingThrough(99));
 		Assert.Equal(transaction.GetHash(), Assert.Single(reloaded.GetPendingThrough(100)));
 		AssertTransaction(transaction, Assert.Single(reloaded.PendingTransactions));
+	}
+
+	[Fact]
+	public void WalletBackupIncludesPendingTransactionsAndConflictProofs()
+	{
+		var keys = CreateKeys();
+		var pending = CreateTransaction(keys);
+		var invalidated = CreateTransaction(keys);
+		var journal = new WalletTransactionJournal(keys);
+		journal.RecordPending(pending, 100);
+		journal.RecordConflict(new SmartTransaction(CreateTransaction(keys).Transaction, new Height(101), RandomUtils.GetUInt256()), [invalidated]);
+		var backup = Path.Combine(_directory, "backup", "wallet.json");
+
+		keys.ToFile(backup);
+
+		var restored = new WalletTransactionJournal(KeyManager.FromFile(backup));
+		AssertTransaction(pending, Assert.Single(restored.PendingTransactions));
+		Assert.True(restored.IsInvalidated(invalidated.GetHash()));
 	}
 
 	[Fact]
@@ -56,19 +74,19 @@ public sealed class WalletTransactionJournalTests : IDisposable
 		journal.RecordPending(second, 105);
 		journal.CompleteScan(100, [first.GetHash()], [first, second]);
 
-		journal = new WalletTransactionJournal(keys);
+		journal = Reload(keys);
 		Assert.Equal(101u, journal.NextScanHeight);
 		Assert.Equal(first.GetHash(), Assert.Single(journal.GetPendingThrough(104)));
 		Assert.Equal(2, journal.GetPendingThrough(105).Length);
 		journal.CompleteScan(104, [first.GetHash()], [first, second]);
 		journal.RewindPending(first, 102);
 
-		journal = new WalletTransactionJournal(keys);
+		journal = Reload(keys);
 		Assert.Equal(102u, journal.NextScanHeight);
 		Assert.Equal(first.GetHash(), Assert.Single(journal.GetPendingThrough(102)));
 		journal.CompleteScan(102, [first.GetHash()], [second]);
 
-		journal = new WalletTransactionJournal(keys);
+		journal = Reload(keys);
 		Assert.Equal(105u, journal.NextScanHeight);
 		AssertTransaction(second, Assert.Single(journal.PendingTransactions));
 	}
@@ -87,7 +105,7 @@ public sealed class WalletTransactionJournalTests : IDisposable
 		journal.RecordConflict(confirmation, [child, parent]);
 		journal.RecordConflict(confirmation, [parent]);
 
-		journal = new WalletTransactionJournal(keys);
+		journal = Reload(keys);
 		var conflict = Assert.Single(journal.Conflicts);
 		Assert.Equal(blockHash.ToString(), conflict.BlockHash);
 		Assert.Equal(101u, conflict.Height);
@@ -103,7 +121,7 @@ public sealed class WalletTransactionJournalTests : IDisposable
 		Assert.Empty(journal.PendingTransactions);
 
 		journal.ReleaseConflict(conflict, 101);
-		journal = new WalletTransactionJournal(keys);
+		journal = Reload(keys);
 
 		Assert.Empty(journal.Conflicts);
 		Assert.False(journal.IsInvalidated(parent.GetHash()));
@@ -128,7 +146,7 @@ public sealed class WalletTransactionJournalTests : IDisposable
 
 		Assert.Throws<ArgumentException>(() => journal.RecordConflict(candidate, [pending]));
 
-		var reloaded = new WalletTransactionJournal(keys);
+		var reloaded = Reload(keys);
 		Assert.Empty(reloaded.Conflicts);
 		AssertTransaction(pending, Assert.Single(reloaded.PendingTransactions));
 	}
@@ -147,18 +165,6 @@ public sealed class WalletTransactionJournalTests : IDisposable
 		Assert.Null(journal.NextScanHeight);
 	}
 
-	[Fact]
-	public void AnUnrecognizedNetworkNameIsRejected()
-	{
-		var keys = CreateKeys();
-		new WalletTransactionJournal(keys).RecordPending(CreateTransaction(keys), 100);
-		var state = ReadState(keys);
-		state["Network"] = "not-a-bitcoin-network";
-		WriteState(keys, state);
-
-		Assert.Throws<InvalidOperationException>(() => new WalletTransactionJournal(keys));
-	}
-
 	[Theory]
 	[InlineData("not-a-transaction-hash")]
 	[InlineData("0000000000000000000000000000000000000000000000000000000000000000")]
@@ -171,7 +177,7 @@ public sealed class WalletTransactionJournalTests : IDisposable
 		WriteState(keys, state);
 		Assert.Throws<InvalidOperationException>(() =>
 		{
-			var journal = new WalletTransactionJournal(keys);
+			var journal = Reload(keys);
 			_ = journal.PendingTransactions.ToArray();
 		});
 	}
@@ -183,7 +189,7 @@ public sealed class WalletTransactionJournalTests : IDisposable
 		new WalletTransactionJournal(keys).RecordPending(CreateTransaction(keys), 100);
 		File.WriteAllText(GetJournalPath(keys), "{");
 
-		Assert.Throws<JsonException>(() => new WalletTransactionJournal(keys));
+		Assert.Throws<JsonException>(() => Reload(keys));
 	}
 
 	[Fact]
@@ -200,7 +206,7 @@ public sealed class WalletTransactionJournalTests : IDisposable
 		Assert.Null(journal.NextScanHeight);
 		Directory.Delete(obstruction);
 		journal.RecordPending(transaction, 100);
-		var reloaded = new WalletTransactionJournal(keys);
+		var reloaded = Reload(keys);
 		AssertTransaction(transaction, Assert.Single(reloaded.PendingTransactions));
 		Assert.Equal(100u, reloaded.NextScanHeight);
 	}
@@ -217,10 +223,10 @@ public sealed class WalletTransactionJournalTests : IDisposable
 		AssertFailedWrite(() => journal.CompleteScan(100, [transaction.GetHash()], [transaction]));
 
 		Assert.Equal(100u, journal.NextScanHeight);
-		Assert.Equal(100u, new WalletTransactionJournal(keys).NextScanHeight);
+		Assert.Equal(100u, Reload(keys).NextScanHeight);
 		Directory.Delete(obstruction);
 		journal.CompleteScan(100, [transaction.GetHash()], [transaction]);
-		Assert.Equal(101u, new WalletTransactionJournal(keys).NextScanHeight);
+		Assert.Equal(101u, Reload(keys).NextScanHeight);
 	}
 
 	[Fact]
@@ -239,10 +245,10 @@ public sealed class WalletTransactionJournalTests : IDisposable
 
 		Assert.True(journal.IsInvalidated(transaction.GetHash()));
 		Assert.Empty(journal.PendingTransactions);
-		Assert.Single(new WalletTransactionJournal(keys).Conflicts);
+		Assert.Single(Reload(keys).Conflicts);
 		Directory.Delete(obstruction);
 		journal.ReleaseConflict(conflict, 101);
-		var reloaded = new WalletTransactionJournal(keys);
+		var reloaded = Reload(keys);
 		Assert.Empty(reloaded.Conflicts);
 		AssertTransaction(transaction, Assert.Single(reloaded.PendingTransactions));
 		Assert.Equal(101u, reloaded.NextScanHeight);
@@ -272,9 +278,15 @@ public sealed class WalletTransactionJournalTests : IDisposable
 		Assert.Equal(expected.IsCancellation, actual.IsCancellation);
 	}
 
-	private static string GetJournalPath(KeyManager keys) => WalletTransactionJournal.GetFilePath(keys.FilePath!);
-	private static JsonNode ReadState(KeyManager keys) => JsonNode.Parse(File.ReadAllText(GetJournalPath(keys)))!;
-	private static void WriteState(KeyManager keys, JsonNode state) => File.WriteAllText(GetJournalPath(keys), state.ToJsonString());
+	private static WalletTransactionJournal Reload(KeyManager keys) => new(KeyManager.FromFile(keys.FilePath!));
+	private static string GetJournalPath(KeyManager keys) => keys.FilePath!;
+	private static JsonNode ReadState(KeyManager keys) => JsonNode.Parse(File.ReadAllText(GetJournalPath(keys)))!["BlockchainState"]!["TransactionJournal"]!;
+	private static void WriteState(KeyManager keys, JsonNode state)
+	{
+		var wallet = JsonNode.Parse(File.ReadAllText(GetJournalPath(keys)))!;
+		wallet["BlockchainState"]!["TransactionJournal"] = state.DeepClone();
+		File.WriteAllText(GetJournalPath(keys), wallet.ToJsonString());
+	}
 	private static string BlockJournalWrites(KeyManager keys) => Directory.CreateDirectory(GetJournalPath(keys) + ".new").FullName;
 
 	private static void AssertFailedWrite(Action mutation)

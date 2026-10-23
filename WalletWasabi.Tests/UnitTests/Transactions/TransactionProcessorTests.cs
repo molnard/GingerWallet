@@ -1678,7 +1678,8 @@ public class TransactionProcessorTests
 		Assert.True(txStore.InvalidatedTransactions.Contains(payment.GetHash()));
 		Assert.Empty(txStore.GetTransactions());
 		Assert.False(txStore.Contains(payment.GetHash()));
-		Assert.True(txStore.TryGetTransaction(payment.GetHash(), out var historical));
+		Assert.False(txStore.TryGetTransaction(payment.GetHash(), out _));
+		Assert.True(txStore.InvalidatedTransactions.TryGetTransaction(payment.GetHash(), out var historical));
 		Assert.NotSame(payment, historical);
 		Assert.Empty(historical.WalletOutputs);
 		Assert.Equal(payment.Labels, historical.Labels);
@@ -1686,15 +1687,7 @@ public class TransactionProcessorTests
 		Assert.True(historical.IsReplacement);
 		Assert.True(historical.IsSpeedup);
 		Assert.True(historical.IsCancellation);
-		historical.TryUpdate(new SmartTransaction(raw, new Height(102), RandomUtils.GetUInt256()));
-		_ = new SmartCoin(historical, 0, receiveKey);
-		Assert.True(txStore.InvalidatedTransactions.TryGetTransaction(payment.GetHash(), out var storedHistory));
-		Assert.False(storedHistory.Confirmed);
-		Assert.Empty(storedHistory.WalletOutputs);
-		Assert.True(txStore.TryGetTransaction(payment.GetHash(), out var secondLookup));
-		Assert.NotSame(historical, secondLookup);
-		Assert.False(secondLookup.Confirmed);
-		Assert.Empty(secondLookup.WalletOutputs);
+		Assert.False(historical.Confirmed);
 		Assert.Empty(txStore.ReleaseToMempoolFromBlock(RandomUtils.GetUInt256()));
 		Assert.True(txStore.MempoolStore.IsEmpty());
 

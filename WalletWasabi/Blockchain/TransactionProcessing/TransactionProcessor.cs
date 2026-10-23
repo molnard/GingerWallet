@@ -166,7 +166,7 @@ public class TransactionProcessor
 			result = new ProcessedResult(tx);
 		}
 
-		if (TransactionStore.TryGetActiveTransaction(txId, out var foundTx))
+		if (TransactionStore.TryGetTransaction(txId, out var foundTx))
 		{
 			foundTx.TryUpdate(tx);
 			tx = foundTx;

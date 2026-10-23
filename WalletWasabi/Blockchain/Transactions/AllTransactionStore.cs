@@ -147,28 +147,7 @@ public class AllTransactionStore : ITransactionStore, IAsyncDisposable
 	{
 		lock (Lock)
 		{
-			if (TryGetActiveTransaction(hash, out sameStx))
-			{
-				return true;
-			}
-			if (InvalidatedTransactions.TryGetTransaction(hash, out var historical))
-			{
-				// Callers may update heights or wallet annotations. Historical graph
-				// evidence must remain independent of those active objects.
-				sameStx = new SmartTransaction(historical.Transaction.Clone(), historical.Height, historical.BlockHash,
-					historical.BlockIndex, historical.Labels, historical.IsReplacement, historical.IsSpeedup,
-					historical.IsCancellation, historical.FirstSeen);
-				return true;
-			}
-			return false;
-		}
-	}
-
-	internal bool TryGetActiveTransaction(uint256 hash, [NotNullWhen(true)] out SmartTransaction? transaction)
-	{
-		lock (Lock)
-		{
-			return MempoolStore.TryGetTransaction(hash, out transaction) || ConfirmedStore.TryGetTransaction(hash, out transaction);
+			return MempoolStore.TryGetTransaction(hash, out sameStx) || ConfirmedStore.TryGetTransaction(hash, out sameStx);
 		}
 	}
 

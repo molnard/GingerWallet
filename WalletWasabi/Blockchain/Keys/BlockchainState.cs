@@ -2,6 +2,7 @@ using NBitcoin;
 using Newtonsoft.Json;
 using WalletWasabi.JsonConverters;
 using WalletWasabi.Models;
+using WalletWasabi.Wallets;
 
 namespace WalletWasabi.Blockchain.Keys;
 
@@ -33,4 +34,8 @@ public class BlockchainState
 	[JsonConverter(typeof(WalletHeightJsonConverter))]
 	[System.Text.Json.Serialization.JsonConverter(typeof(WalletHeightJsonConverterNg))]
 	public Height Height { get; set; }
+
+	[JsonProperty]
+	[System.Text.Json.Serialization.JsonInclude]
+	internal WalletTransactionJournal.Journal TransactionJournal { get; set; } = new();
 }

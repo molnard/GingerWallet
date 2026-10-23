@@ -682,6 +682,26 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 		}
 	}
 
+	internal WalletTransactionJournal.Journal TransactionJournal => BlockchainState.TransactionJournal;
+
+	internal void SetTransactionJournal(WalletTransactionJournal.Journal journal)
+	{
+		lock (CriticalStateLock)
+		{
+			var previous = BlockchainState.TransactionJournal;
+			BlockchainState.TransactionJournal = journal;
+			try
+			{
+				ToFile();
+			}
+			catch
+			{
+				BlockchainState.TransactionJournal = previous;
+				throw;
+			}
+		}
+	}
+
 	public void ToFile(string filePath)
 	{
 		string jsonString = string.Empty;
@@ -839,6 +859,7 @@ public class KeyManager : IJsonOnSerializing, IJsonOnDeserialized
 			if (lastNetwork is null || lastNetwork != expectedNetwork)
 			{
 				BlockchainState.Network = expectedNetwork;
+				BlockchainState.TransactionJournal = new();
 				SetBestHeights(0);
 
 				if (lastNetwork is { })
