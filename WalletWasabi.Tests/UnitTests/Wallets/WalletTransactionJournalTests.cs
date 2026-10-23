@@ -42,7 +42,7 @@ public sealed class WalletTransactionJournalTests : IDisposable
 		var keys = CreateKeys(walletPath);
 		new WalletTransactionJournal(keys).RecordPending(CreateTransaction(keys), 100);
 
-		Assert.Equal(walletPath, Assert.Single(directories.EnumerateWalletFiles()).FullName);
+		Assert.Equal(Path.GetFullPath(walletPath), Assert.Single(directories.EnumerateWalletFiles()).FullName);
 	}
 
 	[Fact]
