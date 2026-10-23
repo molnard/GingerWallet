@@ -32,6 +32,7 @@ namespace WalletWasabi.Wallets;
 public class Wallet : BackgroundService, IWallet
 {
 	private volatile WalletState _state;
+	private bool _acceptMempoolTransactions;
 
 	public Wallet(
 		string dataDir,
@@ -279,16 +280,21 @@ public class Wallet : BackgroundService, IWallet
 
 		try
 		{
-			KeyManager.AssertNetworkOrClearBlockState(Network);
-			EnsureHeightsAreAtLeastSegWitActivation();
-
-			TransactionProcessor.WalletRelevantTransactionProcessed += TransactionProcessor_WalletRelevantTransactionProcessed;
-			BitcoinStore.MempoolService.TransactionReceived += Mempool_TransactionReceived;
-
-			State = WalletState.Initialized;
+			lock (TransactionProcessor.Lock)
+			{
+				KeyManager.AssertNetworkOrClearBlockState(Network);
+				EnsureHeightsAreAtLeastSegWitActivation();
+				WalletFilterProcessor.InitializeTransactionTracking();
+				TransactionProcessor.WalletRelevantTransactionProcessed += TransactionProcessor_WalletRelevantTransactionProcessed;
+				BitcoinStore.MempoolService.TransactionReceived += Mempool_TransactionReceived;
+				_acceptMempoolTransactions = true;
+				State = WalletState.Initialized;
+			}
 		}
 		catch
 		{
+			UnsubscribeFromEvents();
+			WalletFilterProcessor.StopTransactionTracking();
 			State = WalletState.Uninitialized;
 			throw;
 		}
@@ -379,16 +385,13 @@ public class Wallet : BackgroundService, IWallet
 
 			if (prevState < WalletState.Stopping)
 			{
+				UnsubscribeFromEvents();
 				await base.StopAsync(cancel).ConfigureAwait(false);
 
 				if (prevState >= WalletState.Initialized)
 				{
 					await WalletFilterProcessor.StopAsync(cancel).ConfigureAwait(false);
 					WalletFilterProcessor.Dispose();
-
-					BitcoinStore.IndexStore.NewFilters -= IndexDownloader_NewFiltersAsync;
-					BitcoinStore.MempoolService.TransactionReceived -= Mempool_TransactionReceived;
-					TransactionProcessor.WalletRelevantTransactionProcessed -= TransactionProcessor_WalletRelevantTransactionProcessed;
 				}
 			}
 		}
@@ -396,6 +399,24 @@ public class Wallet : BackgroundService, IWallet
 		{
 			State = WalletState.Stopped;
 		}
+	}
+
+	private void UnsubscribeFromEvents()
+	{
+		lock (TransactionProcessor.Lock)
+		{
+			_acceptMempoolTransactions = false;
+			BitcoinStore.IndexStore.NewFilters -= IndexDownloader_NewFiltersAsync;
+			BitcoinStore.MempoolService.TransactionReceived -= Mempool_TransactionReceived;
+			TransactionProcessor.WalletRelevantTransactionProcessed -= TransactionProcessor_WalletRelevantTransactionProcessed;
+		}
+	}
+
+	public override void Dispose()
+	{
+		UnsubscribeFromEvents();
+		WalletFilterProcessor.Dispose();
+		base.Dispose();
 	}
 
 	private void TransactionProcessor_WalletRelevantTransactionProcessed(object? sender, ProcessedResult e)
@@ -415,9 +436,12 @@ public class Wallet : BackgroundService, IWallet
 	{
 		try
 		{
-			if (!TransactionProcessor.IsAware(tx.GetHash()))
+			lock (TransactionProcessor.Lock)
 			{
-				TransactionProcessor.Process(tx);
+				if (_acceptMempoolTransactions && !TransactionProcessor.IsAware(tx.GetHash()))
+				{
+					TransactionProcessor.Process(tx);
+				}
 			}
 		}
 		catch (Exception ex)

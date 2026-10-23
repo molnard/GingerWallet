@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -8,9 +10,11 @@ using NBitcoin;
 using WalletWasabi.Backend.Models;
 using WalletWasabi.Blockchain.Blocks;
 using WalletWasabi.Blockchain.Keys;
+using WalletWasabi.Blockchain.Mempool;
 using WalletWasabi.Blockchain.TransactionProcessing;
 using WalletWasabi.Blockchain.Transactions;
 using WalletWasabi.Stores;
+using WalletWasabi.Models;
 using WalletWasabi.Tests.TestCommon;
 using WalletWasabi.Wallets;
 using WalletWasabi.Wallets.FilterProcessor;
@@ -24,6 +28,70 @@ namespace WalletWasabi.Tests.UnitTests.Wallet;
 public class WalletFilterProcessorTests
 {
 	private readonly Channel<NewFiltersEventTask> _eventChannel = Channel.CreateUnbounded<NewFiltersEventTask>();
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task InitializedWalletProtectsArchivedCreditAndPersistsReceiptsBeforeStartAsync(bool dispose)
+	{
+		var node = await MockNode.CreateNodeAsync();
+		await using var builder = new WalletBuilder(node);
+		using var template = await builder.CreateRealWalletBasedOnTestWalletAsync(new TestWallet("prestart", node.Rpc));
+		var keys = template.KeyManager;
+		keys.SetFilePath(Path.Combine(TestDirectory.Get(), $"prestart-{dispose}.json"));
+		var archived = CreateIncomingTransaction(keys, 200_000);
+		using Key foreignKey = new();
+		var cancellation = Network.RegTest.CreateTransaction();
+		cancellation.Inputs.Add(archived.Transaction.Inputs[0].PrevOut, new Script(OpcodeType.OP_0, OpcodeType.OP_0));
+		cancellation.Outputs.Add(Money.Satoshis(190_000), foreignKey.PubKey.Hash.ScriptPubKey);
+		new WalletTransactionJournal(keys).RecordConflict(new SmartTransaction(cancellation, new Height(101), RandomUtils.GetUInt256()), [archived]);
+		template.Dispose();
+
+		var store = template.BitcoinStore;
+		using BlockDownloadService blocks = new(Mock.Of<IFileSystemBlockRepository>(), [], p2pBlockProvider: null);
+		var transactions = new TransactionProcessor(store.TransactionStore, store.MempoolService, keys, template.ServiceConfiguration.DustThreshold);
+		using var filters = new WalletFilterProcessor(keys, store, transactions, blocks);
+		using WalletWasabi.Wallets.Wallet wallet = new(builder.DataDir, Network.RegTest, keys, store, template.Synchronizer,
+			template.ServiceConfiguration, template.FeeProvider, transactions, filters, template.UnconfirmedTransactionChainProvider);
+
+		wallet.Initialize();
+
+		Assert.Equal(WalletState.Initialized, wallet.State);
+		Assert.Null(filters.ExecuteTask);
+		store.MempoolService.Process(archived.Transaction);
+		Assert.Empty(wallet.Coins);
+		Assert.False(store.TransactionStore.MempoolStore.Contains(archived.GetHash()));
+		var received = CreateIncomingTransaction(keys, 300_000);
+		var inclusiveHeight = (uint)keys.GetBestHeight().Value;
+		store.MempoolService.Process(received.Transaction);
+		Assert.Equal(received.GetHash(), Assert.Single(wallet.Coins).TransactionId);
+		var persisted = new WalletTransactionJournal(keys);
+		Assert.True(persisted.IsInvalidated(archived.GetHash()));
+		Assert.Equal(received.GetHash(), Assert.Single(persisted.PendingTransactions).GetHash());
+		Assert.Equal(inclusiveHeight, persisted.NextScanHeight);
+		Assert.Null(filters.ExecuteTask);
+
+		// An event publisher can already have captured its delegate when teardown
+		// unsubscribes. That callback must remain harmless after tracking detaches.
+		var captured = Assert.IsType<EventHandler<SmartTransaction>>(typeof(MempoolService)
+			.GetField("TransactionReceived", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(store.MempoolService));
+		if (dispose) { wallet.Dispose(); }
+		else { await wallet.StopAsync(CancellationToken.None); }
+		Assert.Null(transactions.IsInvalidatedTransaction);
+		var late = CreateIncomingTransaction(keys, 400_000);
+		captured(store.MempoolService, late);
+		Assert.Equal(received.GetHash(), Assert.Single(wallet.Coins).TransactionId);
+		Assert.False(store.TransactionStore.MempoolStore.Contains(late.GetHash()));
+		wallet.Dispose();
+	}
+
+	private static SmartTransaction CreateIncomingTransaction(KeyManager keys, long satoshis)
+	{
+		var raw = Network.RegTest.CreateTransaction();
+		raw.Inputs.Add(new OutPoint(RandomUtils.GetUInt256(), 0));
+		raw.Outputs.Add(Money.Satoshis(satoshis), keys.GetNextReceiveKey("prestart").P2wpkhScript);
+		return new SmartTransaction(raw, Height.Mempool);
+	}
 
 	[Theory]
 	[InlineData(false)]

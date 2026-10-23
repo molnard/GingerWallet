@@ -28,6 +28,8 @@ public class WalletFilterProcessor : BackgroundService
 	/// <remarks>Guarded by <see cref="Lock"/>.</remarks>
 	private FilterModel? _lastProcessedFilter;
 	private WalletTransactionJournal? _transactionJournal;
+	private bool _transactionTrackingInitialized;
+	private bool _disposed;
 
 	public WalletFilterProcessor(KeyManager keyManager, BitcoinStore bitcoinStore, TransactionProcessor transactionProcessor, BlockDownloadService blockDownloadService)
 	{
@@ -56,6 +58,32 @@ public class WalletFilterProcessor : BackgroundService
 	private BlockDownloadService BlockDownloadService { get; }
 	private WalletTransactionJournal TransactionJournal => _transactionJournal ??= new WalletTransactionJournal(KeyManager);
 	private bool PendingTransactionsInitialized { get; set; }
+
+	internal void InitializeTransactionTracking()
+	{
+		lock (TransactionProcessor.Lock)
+		{
+			ObjectDisposedException.ThrowIf(_disposed, this);
+			if (_transactionTrackingInitialized) { return; }
+			var journal = TransactionJournal;
+			TransactionProcessor.ConfirmedConflictDetected += journal.RecordConflict;
+			TransactionProcessor.UnconfirmedTransactionDetected += UnconfirmedTransactionDetected;
+			TransactionProcessor.IsInvalidatedTransaction = journal.IsInvalidated;
+			_transactionTrackingInitialized = true;
+		}
+	}
+
+	internal void StopTransactionTracking()
+	{
+		lock (TransactionProcessor.Lock)
+		{
+			if (!_transactionTrackingInitialized) { return; }
+			TransactionProcessor.ConfirmedConflictDetected -= TransactionJournal.RecordConflict;
+			TransactionProcessor.UnconfirmedTransactionDetected -= UnconfirmedTransactionDetected;
+			TransactionProcessor.IsInvalidatedTransaction = null;
+			_transactionTrackingInitialized = false;
+		}
+	}
 
 	private IEnumerable<SmartTransaction> GetPendingTransactions() => TransactionProcessor.Coins.AsAllCoinsView()
 		.SelectMany(x => new[] { x.Transaction, x.SpenderTransaction })
@@ -478,19 +506,13 @@ public class WalletFilterProcessor : BackgroundService
 
 	public override async Task StartAsync(CancellationToken cancellationToken)
 	{
-		// Wallet.Initialize has now asserted the selected network, including for imported watch-only wallets.
-		lock (TransactionProcessor.Lock)
-		{
-			_ = TransactionJournal;
-		}
+		// Direct filter-processor users also need the same idempotent tracking setup.
+		InitializeTransactionTracking();
 		lock (Lock)
 		{
 			RequestsStopped = false;
 		}
 		BitcoinStore.IndexStore.Reorged += ReorgedAsync;
-		TransactionProcessor.ConfirmedConflictDetected += TransactionJournal.RecordConflict;
-		TransactionProcessor.UnconfirmedTransactionDetected += UnconfirmedTransactionDetected;
-		TransactionProcessor.IsInvalidatedTransaction = TransactionJournal.IsInvalidated;
 		await BlockDownloadService.StartAsync(cancellationToken).ConfigureAwait(false);
 		await base.StartAsync(cancellationToken).ConfigureAwait(false);
 	}
@@ -505,9 +527,7 @@ public class WalletFilterProcessor : BackgroundService
 		}
 		finally
 		{
-			TransactionProcessor.ConfirmedConflictDetected -= TransactionJournal.RecordConflict;
-			TransactionProcessor.UnconfirmedTransactionDetected -= UnconfirmedTransactionDetected;
-			TransactionProcessor.IsInvalidatedTransaction = null;
+			StopTransactionTracking();
 			// ExecuteAsync may never have started when startup was cancelled.
 			CancelPendingRequests(stopAcceptingRequests: true);
 		}
@@ -515,10 +535,13 @@ public class WalletFilterProcessor : BackgroundService
 
 	public override void Dispose()
 	{
+		lock (TransactionProcessor.Lock)
+		{
+			if (_disposed) { return; }
+			_disposed = true;
+			StopTransactionTracking();
+		}
 		BitcoinStore.IndexStore.Reorged -= ReorgedAsync;
-		TransactionProcessor.ConfirmedConflictDetected -= TransactionJournal.RecordConflict;
-		TransactionProcessor.UnconfirmedTransactionDetected -= UnconfirmedTransactionDetected;
-		TransactionProcessor.IsInvalidatedTransaction = null;
 		base.Dispose();
 		CancelPendingRequests(stopAcceptingRequests: true);
 		if (ExecuteTask is { IsCompleted: false } executeTask)
