@@ -82,7 +82,11 @@ public class WalletJsonTest
 		  "TaprootAccountKeyPath": "86'/0'/0'",
 		  "BlockchainState": {
 		    "Network": "Main",
-		    "Height": "0"
+		    "Height": "0",
+		    "TransactionJournal": {
+		      "Pending": [],
+		      "Conflicts": []
+		    }
 		  },
 		  "PreferPsbtWorkflow": false,
 		  "DefaultReceiveScriptType": "Segwit",
